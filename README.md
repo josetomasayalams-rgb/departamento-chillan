@@ -86,6 +86,83 @@ Todo gratis. La familia **no** necesita cuenta GitHub: entra con su email
 
 ---
 
+
+## Setup paso a paso (cold start)
+
+Si acabás de clonar el repo y querés levantar todo desde cero:
+
+### 1. Crear el proyecto Supabase
+
+1. Andá a [supabase.com](https://supabase.com) → **Start your project** → sign in.
+2. **New project** → elegí organización, nombre (ej: `chillan`),
+   región cercana a Chile (`South America (São Paulo)`), password de DB
+   (anotala, no la vas a ver de nuevo).
+3. Esperá ~2 min a que el proyecto termine de provisionar.
+
+### 2. Correr los dos schemas
+
+1. En el panel izquierdo: **SQL Editor** → **New query**.
+2. Abrí `schema.sql` del repo, copiá todo el contenido, pegá y **Run**.
+   Crea la tabla `reservations` del calendario familiar.
+   Crea las tablas `rentals`, `cleanings`, `cleaning_comments`.
+
+### 3. Copiar las claves al código
+
+1. En Supabase: **Project Settings** (⚙️) → **API**.
+2. Copiá **Project URL** y **anon public key**.
+3. Pegá en los 3 lugares donde están las constantes (ver tabla abajo).
+4. Las claves son **públicas por diseño** (la defensa es la URL staying
+   en familia + el portón Cloudflare Access en el deploy, ver paso 5).
+
+| Archivo | Constante |
+|---|---|
+| `app.js` (línea ~12) | `supabaseUrl` y `supabaseAnonKey` |
+
+### 4. Cambiar los PINes
+
+Por defecto los PINes son placeholders. **Cambialos antes de desplegar.**
+
+| Archivo | Constante | Default | Quién |
+|---|---|---|---|
+| `app.js` | `FAMILY_KEY` | `"9014"` | Familia (calendario principal) |
+
+### 5. Deploy
+
+#### Opción A — Cloudflare Pages + Cloudflare Access (recomendado, gratis)
+
+1. Subí el repo a GitHub (privado).
+2. [dash.cloudflare.com](https://dash.cloudflare.com) → **Workers & Pages**
+   → **Create** → **Pages** → **Connect to Git** → elegí el repo.
+3. Build settings: Framework preset = **None**, Build command vacío,
+   Build output directory = **`/`**. Save and Deploy.
+4. Una vez deployado, anotá la URL `https://<proyecto>.pages.dev`.
+5. **Cloudflare Access** (Zero Trust, plan Free hasta 50 usuarios):
+   - **Access** → **Applications** → **Add an application** → **Self-hosted**
+   - Dominio: `<proyecto>.pages.dev`
+   - Policy: **Allow**, *Action* = **Allow**, *Emails* = los correos de
+     la familia y de quien use el sub-app.
+   - Save.
+6. Compartir la URL. Al abrir pide email → código de 6 dígitos → entra.
+
+#### Opción B — Netlify Drop (sin auth, 30 segundos)
+
+1. Andá a [app.netlify.com/drop](https://app.netlify.com/drop).
+2. Arrastrá la carpeta del proyecto. Listo, URL al instante.
+3. ⚠ Sin portón: la URL queda abierta. Solo para testing.
+
+### 6. Verificación
+
+- [ ] `https://<tu-dominio>/` carga y pide PIN familiar (`9014`).
+- [ ] El badge abajo dice "● Modo live · sincronizado" (no "⚠").
+- [ ] El banner ámbar NO aparece (el schema está bien).
+- [ ] En Supabase → Table Editor, ves las filas en `rentals` y
+      `cleanings`.
+
+Si el badge dice "⚠ Faltan tablas en la nube" o el banner ámbar aparece,
+truncar). Después tocá **Reintentar** en el banner.
+
+---
+
 ## Familias y colores
 
 | Grupo | Color |
