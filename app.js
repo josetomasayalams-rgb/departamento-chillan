@@ -27,12 +27,13 @@ const CONFIG = {
   airbnbMarginDays: 4,   // primer día reservable = hoy + N (margen Airbnb)
 };
 
-const VERSION = "16";  // marca visible (pestaña + badge) para detectar si hay caché
+const VERSION = "17";  // marca visible (pestaña + badge) para detectar si hay caché
 const MONTHS = ["Enero","Febrero","Marzo","Abril","Mayo","Junio",
                 "Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
 const MON_SHORT = ["ene","feb","mar","abr","may","jun","jul","ago","sep","oct","nov","dic"];
 const WD = ["Lun","Mar","Mié","Jue","Vie","Sáb","Dom"];
 const LS_KEY = "chillan-reservations";
+const LS_LOCK = "chillan-lock-enabled";   // "true" = pedir clave al cargar, "false" = no
 const MAX_DATE = `${CONFIG.yearMax}-12-31`;   // tope de fechas reservables
 
 // ---------- Estado ----------
@@ -42,6 +43,7 @@ const state = {
   store: null,
   brush: { families: [], start: null, end: null, hover: null },
   admin: false,        // modo admin: fechas sin restricción + multi-familia
+  lockEnabled: true,   // se carga desde localStorage en setupLock()
   firstBookable: null,
   loadError: null,
   menuIdx: 0,
@@ -427,6 +429,8 @@ function updateAdminUI(){
     btn.textContent = state.admin ? "🔓 Admin ON" : "🔒 Admin";
     btn.classList.toggle("on", state.admin);
   }
+  const lockBtn = document.getElementById("lock-toggle");
+  if (lockBtn) lockBtn.hidden = !state.admin;
   document.body.classList.toggle("admin-mode", state.admin);
 }
 
@@ -553,6 +557,7 @@ function bind(){
   document.getElementById("brush-confirm").addEventListener("click", confirmBrush);
   document.getElementById("undo").addEventListener("click", doUndo);
   document.getElementById("admin").addEventListener("click", toggleAdmin);
+  document.getElementById("lock-toggle").addEventListener("click", () => setLockEnabled(!state.lockEnabled));
   document.getElementById("brush-cancel").addEventListener("click", cancelSelection);
 
   document.getElementById("cancel").addEventListener("click", closeModal);
@@ -587,6 +592,42 @@ function bind(){
 }
 
 // ---------- Lock screen con clave familiar ----------
+// Persistencia: state.lockEnabled se guarda en localStorage[LS_LOCK].
+// Default: true (se pide clave al cargar). Admin puede cambiarlo desde el footer.
+function isLockEnabled(){
+  return localStorage.getItem(LS_LOCK) !== "false";
+}
+function setLockEnabled(enabled){
+  state.lockEnabled = enabled;
+  localStorage.setItem(LS_LOCK, enabled ? "true" : "false");
+  applyLockState();
+  updateLockToggleBtn();
+}
+function applyLockState(){
+  const lock = document.getElementById("lock");
+  if (!lock) return;
+  if (state.lockEnabled){
+    lock.hidden = false;
+    document.body.classList.add("locked");
+    const first = document.querySelector("#lock-pins .lock-pin");
+    if (first) first.focus();
+  } else {
+    lock.hidden = true;
+    document.body.classList.remove("locked");
+  }
+}
+function updateLockToggleBtn(){
+  const btn = document.getElementById("lock-toggle");
+  if (!btn) return;
+  const on = state.lockEnabled;
+  btn.textContent = on ? "🔒 Clave ON" : "🔓 Clave OFF";
+  btn.title = on
+    ? "Click para desactivar la clave de inicio"
+    : "Click para reactivar la clave de inicio";
+  btn.classList.toggle("on", on);
+  btn.classList.toggle("off", !on);
+}
+
 function setupLock(){
   const FAMILY_KEY = "9014";
   const lock = document.getElementById("lock");
@@ -594,8 +635,10 @@ function setupLock(){
   const err = document.getElementById("lock-err");
   if (!lock || pins.length !== 4) return;
 
-  document.body.classList.add("locked");
-  pins[0].focus();
+  // Lee preferencia persistida y aplica estado (muestra/oculta lock).
+  state.lockEnabled = isLockEnabled();
+  applyLockState();
+  updateLockToggleBtn();
 
   function getCode(){ return pins.map(p => p.value).join(""); }
   function clearPins(){

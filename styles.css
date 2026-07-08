@@ -192,7 +192,9 @@ input[type=date].glass::-webkit-calendar-picker-indicator{ filter:invert(1) opac
 /* Footer */
 .foot{ margin-top:14px; display:flex; justify-content:center; align-items:center; gap:10px; }
 .admin-btn{ font-size:12px; padding:5px 12px; }
-.admin-btn.on{ background:linear-gradient(180deg,#f59e0b,#d97706); border-color:rgba(255,255,255,.3); font-weight:600; }
+#admin.on{ background:linear-gradient(180deg,#f59e0b,#d97706); border-color:rgba(255,255,255,.3); font-weight:600; }
+#lock-toggle.on{ background:linear-gradient(180deg,#3b82f6,#2563eb); border-color:rgba(255,255,255,.3); font-weight:600; }
+#lock-toggle.off{ background:linear-gradient(180deg,#ef4444,#b91c1c); border-color:rgba(255,255,255,.3); font-weight:600; }
 body.admin-mode .app{ box-shadow:0 0 0 2px #f59e0b, var(--shadow); }
 .mode-badge{
   font-size:11px; color:var(--text-dim); padding:5px 12px; border-radius:999px;
