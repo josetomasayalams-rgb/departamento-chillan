@@ -10,7 +10,7 @@
 const CONFIG = {
   // 👇 Pega aquí tus claves de Supabase (README.md). Vacío = modo local.
   supabaseUrl: "https://uimqusoylxpyljbfqumm.supabase.co",
-  supabaseAnonKey: "sb_publishable_B_MIa8pWGFjzLhdzLoi61A_kffCRo8",
+  supabaseAnonKey: "sb_publishable_B_MIa8pWGFjzLhdzLoi61A_kffCRo8_",
 
   families: [
     { id: "papas",          name: "Papás",          color: "#A855F7" },
@@ -27,7 +27,7 @@ const CONFIG = {
   airbnbMarginDays: 4,   // primer día reservable = hoy + N (margen Airbnb)
 };
 
-const VERSION = "15";  // marca visible (pestaña + badge) para detectar si hay caché
+const VERSION = "16";  // marca visible (pestaña + badge) para detectar si hay caché
 const MONTHS = ["Enero","Febrero","Marzo","Abril","Mayo","Junio",
                 "Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
 const MON_SHORT = ["ene","feb","mar","abr","may","jun","jul","ago","sep","oct","nov","dic"];
