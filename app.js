@@ -8,9 +8,11 @@
 // =====================================================================
 
 const CONFIG = {
-  // 👇 Pega aquí tus claves de Supabase (README.md). Vacío = modo local.
+  // La publishable key solo lee las proyecciones públicas. Las escrituras
+  // pasan siempre por calendar-api con una sesión emitida por el servidor.
   supabaseUrl: "https://uimqusoylxpyljbfqumm.supabase.co",
   supabaseAnonKey: "sb_publishable_B_MIa8pWGFjzLhdzLoi61A_kffCRo8_",
+  apiUrl: "https://uimqusoylxpyljbfqumm.supabase.co/functions/v1/calendar-api",
 
   families: [
     { id: "papas",          name: "Papás",          color: "#A855F7" },
@@ -27,13 +29,13 @@ const CONFIG = {
   airbnbMarginDays: 4,   // primer día reservable = hoy + N (margen Airbnb)
 };
 
-const VERSION = "17";  // marca visible (pestaña + badge) para detectar si hay caché
+const VERSION = "18";  // marca visible (pestaña + badge) para detectar si hay caché
 const MONTHS = ["Enero","Febrero","Marzo","Abril","Mayo","Junio",
                 "Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
 const MON_SHORT = ["ene","feb","mar","abr","may","jun","jul","ago","sep","oct","nov","dic"];
 const WD = ["Lun","Mar","Mié","Jue","Vie","Sáb","Dom"];
-const LS_KEY = "chillan-reservations";
 const LS_LOCK = "chillan-lock-enabled";   // "true" = pedir clave al cargar, "false" = no
+const LS_SESSION = "chillan-family-api-session";
 const MAX_DATE = `${CONFIG.yearMax}-12-31`;   // tope de fechas reservables
 
 // ---------- Estado ----------
@@ -48,6 +50,7 @@ const state = {
   loadError: null,
   menuIdx: 0,
   undo: [],          // pila de inversas (máx 7) para Deshacer
+  session: null,
 };
 
 // ---------- Helpers fecha / familia / id ----------
@@ -77,61 +80,64 @@ function brushColor(){
 // UUID v4 válido para Postgres; con fallback si crypto.randomUUID no existe
 // (contextos no seguros: http en LAN, file://).
 function uuid(){
-  if (crypto?.randomUUID) return crypto.randomUUID();
-  const b = crypto.getRandomValues(new Uint8Array(16));
+  if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
+  const b = globalThis.crypto?.getRandomValues ? globalThis.crypto.getRandomValues(new Uint8Array(16)) : null;
+  if (!b) return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, c => {
+    const r = (Math.random() * 16) | 0;
+    return (c === "x" ? r : (r & 0x3) | 0x8).toString(16);
+  });
   b[6] = (b[6] & 0x0f) | 0x40; b[8] = (b[8] & 0x3f) | 0x80;
   const h = [...b].map(x => x.toString(16).padStart(2,"0"));
   return h.slice(0,4).join("")+"-"+h.slice(4,6).join("")+"-"+h.slice(6,8).join("")
        +"-"+h.slice(8,10).join("")+"-"+h.slice(10,16).join("");
 }
 
-// ---------- Store: Supabase o LocalStorage ---------------------------
-function localStore(){
+// ---------- Store: API privada + proyección pública ------------------
+async function api(action, payload = {}){
+  const headers = { "content-type": "application/json" };
+  if (state.session?.token) headers.authorization = `Bearer ${state.session.token}`;
+  const response = await fetch(CONFIG.apiUrl, { method:"POST", headers, body: JSON.stringify({ action, ...payload }) });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok){
+    if (response.status === 401) state.session = null;
+    throw new Error(data.error || "No se pudo comunicar con el calendario.");
+  }
+  return data;
+}
+
+function apiStore(){
   return {
-    async all(){ return JSON.parse(localStorage.getItem(LS_KEY) || "[]"); },
+    async all(){
+      const data = await api(state.session ? "family.list" : "family.public.list");
+      return data.reservations || [];
+    },
     async add(recs){
-      const list = JSON.parse(localStorage.getItem(LS_KEY) || "[]");
-      localStorage.setItem(LS_KEY, JSON.stringify([...list, ...recs]));
+      if (!state.session) throw new Error("Ingresa la clave para guardar una reserva.");
+      if (recs.length !== 1) throw new Error("Solo se puede reservar para una familia a la vez.");
+      await api("family.create", { reservation: recs[0] });
     },
     async remove(id){
-      const list = JSON.parse(localStorage.getItem(LS_KEY) || "[]");
-      localStorage.setItem(LS_KEY, JSON.stringify(list.filter(r => r.id !== id)));
+      if (!state.session) throw new Error("Ingresa la clave para eliminar una reserva.");
+      await api("family.delete", { id });
     },
-    onChange(cb){ window.addEventListener("storage", e => { if (e.key === LS_KEY) cb(); }); },
+    async onChange(cb){
+      try{
+        const { createClient } = await import("https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm");
+        const sb = createClient(CONFIG.supabaseUrl, CONFIG.supabaseAnonKey);
+        const channel = sb.channel("family-public-calendar").on("postgres_changes",
+          { event:"*", schema:"public", table:"family_calendar_public" }, cb).subscribe();
+        return () => sb.removeChannel(channel);
+      }catch(err){ console.warn("Realtime no disponible:", err); return () => {}; }
+    },
   };
 }
 
 async function initStore(){
   const badge = document.getElementById("mode-badge");
-  let live = false, configuredButFailed = false;
-
-  if (CONFIG.supabaseUrl && CONFIG.supabaseAnonKey){
-    try{
-      const { createClient } = await import("https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm");
-      const sb = createClient(CONFIG.supabaseUrl, CONFIG.supabaseAnonKey);
-      state.store = {
-        async all(){ const { data, error } = await sb.from("reservations").select("*").order("start_date"); if (error) throw error; return data; },
-        async add(recs){ const { error } = await sb.from("reservations").insert(recs); if (error) throw error; },
-        async remove(id){ const { error } = await sb.from("reservations").delete().eq("id", id); if (error) throw error; },
-        onChange(cb){ sb.channel("reservations").on("postgres_changes",
-          { event:"*", schema:"public", table:"reservations" }, () => cb()).subscribe(); },
-      };
-      live = true;
-    }catch(err){
-      // CDN bloqueado / sin red / claves malas → caer a modo local en vez de morir
-      console.error("Supabase init falló, usando modo local:", err);
-      configuredButFailed = true;
-    }
-  }
-  if (!live) state.store = localStore();
-
-  badge.textContent = (live
-    ? "● Modo live · sincronizado"
-    : (configuredButFailed
-        ? "⚠ Modo local (no se pudo conectar a Supabase)"
-        : "○ Modo local · solo este dispositivo (configura Supabase para sincronizar)")) + "  ·  v" + VERSION;
-  badge.classList.toggle("live", live);
-  state.store.onChange(() => load());
+  state.store = apiStore();
+  badge.textContent = "● Calendario en la nube · v" + VERSION;
+  badge.classList.add("live");
+  await state.store.onChange(() => load());
 }
 
 async function load(){
@@ -293,14 +299,9 @@ function toggleMenu(open, autofocus = true){
 
 function selectFamily(id){
   const b = state.brush;
-  if (state.admin){
-    const i = b.families.indexOf(id);
-    if (i >= 0) b.families.splice(i,1); else b.families.push(id);   // acumula (multi)
-  } else {
-    b.families = (b.families[0] === id) ? [] : [id];                // single (toggle)
-  }
+  b.families = (b.families[0] === id) ? [] : [id];
   b.start = b.end = b.hover = null;
-  if (!state.admin) toggleMenu(false);   // admin: deja abierto para elegir más
+  toggleMenu(false);
   render();
 }
 
@@ -363,9 +364,7 @@ function updateBrushBar(){
 async function confirmBrush(){
   const b = state.brush;
   if (!b.start || !b.families.length) return;
-  const recs = b.families.map(family_id => ({
-    id: uuid(), family_id, start_date: b.start, end_date: b.end, note: ""
-  }));
+  const recs = [{ id: uuid(), family_id: b.families[0], start_date: b.start, end_date: b.end, note: "" }];
   try{
     await state.store.add(recs);
     pushUndo({ op:"remove", recs });
@@ -409,16 +408,13 @@ function updateUndoBtn(){
   btn.textContent = state.undo.length ? `↩ Deshacer (${state.undo.length})` : "↩ Deshacer";
 }
 
-// ---------- Modo admin (clave 2407): fechas sin restricción + multi-familia ----------
+// ---------- Modo admin: fechas históricas para quien ya validó su PIN ----------
 function toggleAdmin(){
   if (state.admin){
     state.admin = false;
-    state.brush.families = state.brush.families.slice(0,1);   // vuelve a selección simple
   } else {
-    const key = prompt("Clave de admin:");
-    if (key === null) return;
-    if (key === "2407") state.admin = true;
-    else { alert("Clave incorrecta"); return; }
+    if (!state.session){ alert("Ingresa primero la clave familiar."); return; }
+    state.admin = true;
   }
   updateAdminUI();
   render();
@@ -449,7 +445,7 @@ function openModal({ start, end }){
   const fc = document.getElementById("fam-checks");
   fc.innerHTML = CONFIG.families.map(f => `
     <label class="fam-opt">
-      <input type="checkbox" value="${f.id}">
+      <input type="radio" name="reservation-family" value="${f.id}">
       <span class="swatch" style="background:${f.color}"></span>
       <span class="nm">${f.name}</span>
     </label>`).join("");
@@ -520,7 +516,7 @@ function positionPopover(pop, anchor){
   pop.style.top = Math.max(8, top) + "px";
 }
 
-function escapeHtml(s){ return s.replace(/[&<>"']/g, c =>
+function escapeHtml(s){ return String(s ?? "").replace(/[&<>"']/g, c =>
   ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c])); }
 
 // ---------- Navegación ----------
@@ -606,7 +602,7 @@ function setLockEnabled(enabled){
 function applyLockState(){
   const lock = document.getElementById("lock");
   if (!lock) return;
-  if (state.lockEnabled){
+  if (state.lockEnabled && !state.session){
     lock.hidden = false;
     document.body.classList.add("locked");
     const first = document.querySelector("#lock-pins .lock-pin");
@@ -628,8 +624,21 @@ function updateLockToggleBtn(){
   btn.classList.toggle("off", !on);
 }
 
+function restoreSession(){
+  try{
+    const session = JSON.parse(localStorage.getItem(LS_SESSION) || "null");
+    return session?.token && new Date(session.expiresAt).getTime() > Date.now() ? session : null;
+  }catch{ return null; }
+}
+
+async function startFamilySession(pin){
+  const session = await api("session.create", { app:"family", pin });
+  state.session = session;
+  try { localStorage.setItem(LS_SESSION, JSON.stringify(session)); } catch {}
+  await load();
+}
+
 function setupLock(){
-  const FAMILY_KEY = "9014";
   const lock = document.getElementById("lock");
   const pins = Array.from(document.querySelectorAll("#lock-pins .lock-pin"));
   const err = document.getElementById("lock-err");
@@ -653,7 +662,15 @@ function setupLock(){
       clearPins();
     }, 550);
   }
-  function success(){
+  async function success(){
+    const code = getCode();
+    err.textContent = "Validando…";
+    try{
+      await startFamilySession(code);
+    }catch(e){
+      fail(e.message || "No se pudo validar la clave.");
+      return;
+    }
     lock.classList.add("unlocking");
     document.body.classList.remove("locked");
     setTimeout(() => {
@@ -669,10 +686,7 @@ function setupLock(){
       if (pin.value && i < pins.length - 1){
         pins[i + 1].focus();
       }
-      if (i === pins.length - 1 && getCode().length === pins.length){
-        if (getCode() === FAMILY_KEY) success();
-        else fail("Clave incorrecta");
-      }
+      if (i === pins.length - 1 && getCode().length === pins.length) success();
     });
     pin.addEventListener("keydown", e => {
       if (e.key === "Backspace" && !pin.value && i > 0){
@@ -690,10 +704,7 @@ function setupLock(){
       digits.forEach((d, j) => { pins[j].value = d; pins[j].classList.add("filled"); });
       const last = Math.min(digits.length, pins.length) - 1;
       pins[Math.max(0, last)].focus();
-      if (digits.length === pins.length){
-        if (digits.join("") === FAMILY_KEY) success();
-        else fail("Clave incorrecta");
-      }
+      if (digits.length === pins.length) success();
     });
   });
 }
@@ -702,6 +713,7 @@ function setupLock(){
 (async function main(){
   try{
     state.firstBookable = firstBookableIso();
+    state.session = restoreSession();
     document.title += "  ·  v" + VERSION;   // marca en la pestaña para detectar caché
     bind();
     buildStatic();
