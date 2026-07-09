@@ -9,13 +9,3 @@ oficial-nevados_*.jpg
 
 # Artefacto de build local para debug (app canónica = index.html)
 calendario.html
-
-# Repo independiente; nunca debe entrar como submódulo del calendario familiar.
-chillan-rentas/
-
-# Supabase CLI local state and secrets
-supabase/.temp/
-supabase/.env
-
-# Logical production backups created before migrations
-backups/
