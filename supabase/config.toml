@@ -1,0 +1,5 @@
+project_id = "uimqusoylxpyljbfqumm"
+
+[functions.calendar-ical]
+verify_jwt = false
+

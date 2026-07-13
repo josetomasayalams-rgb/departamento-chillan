@@ -1,186 +1,122 @@
-# Reservas · Departamento Chillán
+# Departamento Chillan - calendario familiar
 
-Calendario compartido para reservar el departamento, con estética **Liquid Glass**
-sobre una foto de los Nevados de Chillán. Cinco familias, cada una con su color.
+PWA en Vanilla JS para administrar las reservas familiares del departamento y
+sincronizar disponibilidad con Airbnb y Booking mediante iCal.
 
-Funciona de dos formas:
-- **Modo local** (sin configurar nada): guarda en el navegador. Suficiente para probar.
-- **Modo live** (con Supabase): las familias ven y editan el mismo calendario en
-  tiempo real desde cualquier dispositivo.
+- Aplicacion: <https://josetomasayalams-rgb.github.io/departamento-chillan/>
+- Feed familiar: <https://uimqusoylxpyljbfqumm.supabase.co/functions/v1/calendar-ical/calendario-familiar.ics>
+- Backend compartido: Supabase, proyecto `uimqusoylxpyljbfqumm`
 
----
+## Comportamiento de fechas
 
-## Características
+Todas las reservas usan la convencion hotelera `[llegada, salida)`. Una reserva
+del 20 al 24 ocupa las noches 20, 21, 22 y 23; el dia 24 queda libre para otra
+llegada. Las reservas familiares se pueden crear, editar, eliminar y deshacer.
 
-- 🔒 **Lock screen con clave `9014`** al cargar. La app queda difuminada detrás hasta que se ingresa. Reaparece en cada reload (no se persiste) — defensa de UX para que cualquiera que abra el link no vea las reservas de la familia de inmediato.
-- 📱 **App instalable (PWA)**: agregá a pantalla de inicio en iOS/Android y se abre sin barra del navegador, en modo standalone.
-- 🏔️ **Background optimizado por viewport**: desktop usa `chillan-bg.jpg` (1.3 MB, 2560×1706); mobile usa `chillan-bg-mobile.jpg` (330 KB, 1600×1066) bajo los 900px de ancho.
-- 👆 **Mobile-first**: `touch-action: manipulation`, popover en bottom sheet, layout compacto en landscape, tap-highlight suprimido.
-- 🖥️ **Desktop adaptativo**: el layout crece con el monitor hasta 1400px (antes capeado en 1080). En pantalla completa de 1920×1080 o 2560×1440 se ve cómodo.
-- ⚡ **Carga rápida**: preconnect/preload del background, `<script defer>`, sin build step.
+Airbnb y Booking aparecen con colores propios y son de solo lectura. La
+aplicacion impide guardar una reserva familiar que se cruce con cualquier
+bloqueo existente.
 
-## Seguridad (importante si vas a publicar el repo)
+## Arquitectura iCal
 
-La clave `9014` del lock screen es **solo una puerta de UX** — protege la app
-en el celular de la familia para que no vean las reservas por accidente, pero
-**no protege el backend de Supabase**. Como la URL de Supabase y la anon key
-están commiteadas en `app.js`, cualquiera con acceso al repo puede
-leer/escribir la base directo con `curl`. La defensa real es:
+`reservations` contiene exclusivamente reservas familiares. La Edge Function
+`calendar-ical` consulta esa tabla en cada solicitud y genera un calendario con
+`SUMMARY:No disponible`; nunca publica familia, nota ni otro detalle privado.
 
-- **Cloudflare Access** (recomendado) — ver paso 3 de "Publicarlo".
-- O un schema con RLS restringido (no incluido por simplicidad).
+`external_calendar_events` contiene solamente UID, fuente y fechas importadas.
+La ruta `/sync` descarga ambos feeds y reemplaza cada fuente dentro de una sola
+transaccion. Si una descarga o el parseo falla, conserva los ultimos eventos
+validos. Un cron de Supabase ejecuta la sincronizacion cada 15 minutos.
 
----
-## 1) Probarlo localmente
+El feed familiar nunca consulta `external_calendar_events`, lo que evita volver
+a exportar bloqueos importados y formar ciclos.
+
+## Desarrollo local
+
+La interfaz no tiene build, bundler ni dependencias locales:
 
 ```bash
-cd "PLATAFORMAS CHILLAN"
 python3 -m http.server 8000
 ```
-Abrir http://localhost:8000 (hay que usar `http`, no abrir el archivo directo).
 
-Por defecto corre en **modo local**. Ya puedes crear rangos, navegar meses/años, etc.
+Abrir <http://localhost:8000>. No usar `file://`, porque la importacion dinamica
+del cliente de Supabase requiere HTTP.
 
-## 2) Activar modo live (Supabase) — para compartir entre familias
+Comprobaciones basicas:
 
-1. Crea una cuenta gratis en **https://supabase.com** y un proyecto nuevo.
-2. Ve a **SQL Editor → New query**, pega el contenido de `schema.sql` y **Run**.
-3. Ve a **Project Settings → API** y copia:
-   - **Project URL**
-   - **anon public key**
-4. Pégalas en `app.js`, al inicio, en `CONFIG`:
-   ```js
-   supabaseUrl: "https://xxxx.supabase.co",
-   supabaseAnonKey: "eyJhbGciOi....",
-   ```
-5. Recarga. El indicador abajo dirá **“Modo live · sincronizado”**.
+```bash
+node --check app.js
+npx -y deno test --allow-read --allow-env supabase/functions/calendar-ical/ical_test.ts
+```
 
-> Las claves `anon` son públicas por diseño; la seguridad la da el *Row Level Security*
-> de la tabla (ver `schema.sql`). Como la URL queda privada entre la familia, alcanza
-> para v1. Si la URL va a salir del círculo, agrega un passcode compartido (futuro).
+## Despliegue Supabase
 
-## 3) Publicarlo (URL para las familias)
+Requisitos: Supabase CLI, acceso al proyecto y las URLs privadas de exportacion
+iCal de Airbnb y Booking.
 
-Camino recomendado: **GitHub (privado) + Cloudflare Pages + Cloudflare Access**.
-Todo gratis. La familia **no** necesita cuenta GitHub: entra con su email
-(Cloudflare Access manda un código de 6 dígitos).
+```bash
+supabase login
+supabase link --project-ref uimqusoylxpyljbfqumm
+supabase db push
+supabase functions deploy calendar-ical --no-verify-jwt
+```
 
-1. **Subir el código a GitHub** (solo José): crea un repo **privado** y haz `push`
-   (`git remote add origin <URL> && git push -u origin main`).
-2. **Cloudflare Pages** (`dash.cloudflare.com` → Workers & Pages → Create →
-   Pages → Connect to Git): elige el repo. Build settings:
-   *Framework preset* = **None**, *Build command* vacío, *Build output directory*
-   = **`/`** (raíz). Save and Deploy → URL `https://<proyecto>.pages.dev`.
-3. **Cloudflare Access** (portón familiar): Zero Trust (plan Free, ≤50 usuarios)
-   → Access → Applications → Add application → **Self-hosted**, dominio
-   `<proyecto>.pages.dev`. Policy: tipo **Allow**, *Action* Include,
-   **Emails** = correos de la familia. Guardar.
-4. Comparte la URL. Al abrirla pedirá email → código → calendario compartido.
+Generar un secreto aleatorio y cargar los tres secretos sin escribir sus valores
+en archivos del repositorio:
 
-> Sube la carpeta **con** `assets/chillan-bg.jpg` y `assets/chillan-bg-mobile.jpg` (el deploy
-> usa ambas según el viewport del visitante).
->
-> **Atajo rápido (sin cuenta ni portón):** arrastra la carpeta a
-> https://app.netlify.com/drop → URL al instante. Útil para probar, pero queda
-> sin el portón Access (privacidad solo por URL desconocida).
+```bash
+read -s "SYNC_SECRET?Secreto de sincronizacion: "
+read -s "AIRBNB_ICAL_URL?URL iCal de Airbnb: "
+read -s "BOOKING_ICAL_URL?URL iCal de Booking: "
+supabase secrets set \
+  SYNC_SECRET="$SYNC_SECRET" \
+  AIRBNB_ICAL_URL="$AIRBNB_ICAL_URL" \
+  BOOKING_ICAL_URL="$BOOKING_ICAL_URL"
+```
 
----
+En Supabase Dashboard, abrir **Vault** y crear `calendar_sync_secret` con el
+mismo valor de `SYNC_SECRET`. La migracion deja programado el job
+`calendar-ical-sync-15m`; despues de cargar Vault se puede iniciar la primera
+sincronizacion desde SQL Editor:
 
+```sql
+select public.invoke_calendar_ical_sync();
+```
 
-## Setup paso a paso (cold start)
+Verificar el estado sin exponer URLs:
 
-Si acabás de clonar el repo y querés levantar todo desde cero:
+```sql
+select source, status, event_count, last_success_at, error_message
+from public.calendar_sync_status
+order by source;
+```
 
-### 1. Crear el proyecto Supabase
+## Configuracion en Airbnb y Booking
 
-1. Andá a [supabase.com](https://supabase.com) → **Start your project** → sign in.
-2. **New project** → elegí organización, nombre (ej: `chillan`),
-   región cercana a Chile (`South America (São Paulo)`), password de DB
-   (anotala, no la vas a ver de nuevo).
-3. Esperá ~2 min a que el proyecto termine de provisionar.
+1. En Airbnb y Booking, importar el feed familiar publico indicado al inicio.
+2. En el calendario familiar, las dos URLs de exportacion externas se cargan
+   solamente como secretos de la Edge Function.
+3. Para compartir reservas entre plataformas, importar en Airbnb el enlace de
+   Booking e importar en Booking el enlace de Airbnb.
+4. No usar como secreto el feed familiar: debe permanecer publico para que las
+   plataformas puedan consultarlo automaticamente.
 
-### 2. Correr los dos schemas
+## Validacion y recuperacion
 
-1. En el panel izquierdo: **SQL Editor** → **New query**.
-2. Abrí `schema.sql` del repo, copiá todo el contenido, pegá y **Run**.
-   Crea la tabla `reservations` del calendario familiar.
-   Crea las tablas `rentals`, `cleanings`, `cleaning_comments`.
+- El feed debe responder `200` y `Content-Type: text/calendar`.
+- Sus eventos deben contener `SUMMARY:No disponible` y no nombres ni notas.
+- Un evento externo debe aparecer en la PWA como `Solo lectura` y no aparecer
+  dentro del feed familiar.
+- Si el badge inferior indica que una fuente no se actualizo, revisar
+  `calendar_sync_status` y volver a ejecutar `invoke_calendar_ical_sync()`.
+- Para detener importaciones sin perder datos, desactivar el job
+  `calendar-ical-sync-15m` desde Supabase Cron. Los ultimos bloqueos permanecen
+  visibles hasta la siguiente sincronizacion correcta o su eliminacion manual.
 
-### 3. Copiar las claves al código
+## Archivos principales
 
-1. En Supabase: **Project Settings** (⚙️) → **API**.
-2. Copiá **Project URL** y **anon public key**.
-3. Pegá en los 3 lugares donde están las constantes (ver tabla abajo).
-4. Las claves son **públicas por diseño** (la defensa es la URL staying
-   en familia + el portón Cloudflare Access en el deploy, ver paso 5).
-
-| Archivo | Constante |
-|---|---|
-| `app.js` (línea ~12) | `supabaseUrl` y `supabaseAnonKey` |
-
-### 4. Cambiar los PINes
-
-Por defecto los PINes son placeholders. **Cambialos antes de desplegar.**
-
-| Archivo | Constante | Default | Quién |
-|---|---|---|---|
-| `app.js` | `FAMILY_KEY` | `"9014"` | Familia (calendario principal) |
-
-### 5. Deploy
-
-#### Opción A — Cloudflare Pages + Cloudflare Access (recomendado, gratis)
-
-1. Subí el repo a GitHub (privado).
-2. [dash.cloudflare.com](https://dash.cloudflare.com) → **Workers & Pages**
-   → **Create** → **Pages** → **Connect to Git** → elegí el repo.
-3. Build settings: Framework preset = **None**, Build command vacío,
-   Build output directory = **`/`**. Save and Deploy.
-4. Una vez deployado, anotá la URL `https://<proyecto>.pages.dev`.
-5. **Cloudflare Access** (Zero Trust, plan Free hasta 50 usuarios):
-   - **Access** → **Applications** → **Add an application** → **Self-hosted**
-   - Dominio: `<proyecto>.pages.dev`
-   - Policy: **Allow**, *Action* = **Allow**, *Emails* = los correos de
-     la familia y de quien use el sub-app.
-   - Save.
-6. Compartir la URL. Al abrir pide email → código de 6 dígitos → entra.
-
-#### Opción B — Netlify Drop (sin auth, 30 segundos)
-
-1. Andá a [app.netlify.com/drop](https://app.netlify.com/drop).
-2. Arrastrá la carpeta del proyecto. Listo, URL al instante.
-3. ⚠ Sin portón: la URL queda abierta. Solo para testing.
-
-### 6. Verificación
-
-- [ ] `https://<tu-dominio>/` carga y pide PIN familiar (`9014`).
-- [ ] El badge abajo dice "● Modo live · sincronizado" (no "⚠").
-- [ ] El banner ámbar NO aparece (el schema está bien).
-- [ ] En Supabase → Table Editor, ves las filas en `rentals` y
-      `cleanings`.
-
-Si el badge dice "⚠ Faltan tablas en la nube" o el banner ámbar aparece,
-truncar). Después tocá **Reintentar** en el banner.
-
----
-
-## Familias y colores
-
-| Grupo | Color |
-|-------|-------|
-| Papás | morado `#A855F7` |
-| Quiroz Ayala | verde `#10B981` |
-| Ayala Gonzalez | ámbar `#F59E0B` |
-| Cattan Ayala | rosa `#EC4899` |
-| Coco | azul `#3B82F6` |
-
-Para cambiar un color o nombre, edita el arreglo `CONFIG.families` en `app.js`.
-
-## Archivos
-
-- `index.html` / `styles.css` / `app.js` — la app (vanilla JS, sin build).
-- `manifest.webmanifest` — PWA manifest (instalable, standalone).
-- `assets/chillan-bg.jpg` — fondo desktop (1.3 MB, 2560×1706).
-- `assets/chillan-bg-mobile.jpg` — fondo mobile (330 KB, 1600×1066, `<900px`).
-- `assets/icon-192.png` / `assets/icon-512.png` — iconos PWA / apple-touch-icon.
-- `schema.sql` — tabla + permisos + realtime para Supabase.
-- `AGENTS.md` — guía para futuras sesiones de OpenCode/Claude.
+- `app.js`, `index.html`, `styles.css`: PWA familiar.
+- `schema.sql`: instalacion inicial de `reservations`.
+- `supabase/migrations/`: tablas externas, operaciones atomicas y cron.
+- `supabase/functions/calendar-ical/`: feed publico e importadores.
+- `supabase/fixtures/`: calendarios ficticios usados por las pruebas.

@@ -9,3 +9,7 @@ oficial-nevados_*.jpg
 
 # Artefacto de build local para debug (app canónica = index.html)
 calendario.html
+
+# Estado local de Supabase CLI
+supabase/.branches/
+supabase/.temp/

@@ -17,7 +17,7 @@
 
   <link rel="preload" as="image" href="assets/chillan-bg-mobile.jpg" fetchpriority="high" media="(max-width:900px)">
 
-  <link rel="stylesheet" href="styles.css?v=17">
+  <link rel="stylesheet" href="styles.css?v=18">
 </head>
 <body>
   <div class="bg-layer" aria-hidden="true"></div>
@@ -88,7 +88,7 @@
   <div class="modal-overlay" id="modal" hidden>
     <div class="modal glass" role="dialog" aria-modal="true" aria-labelledby="modal-title">
       <h2 id="modal-title">Nueva reserva</h2>
-      <p class="modal-tip">Tip: también puedes elegir una familia arriba y tocar los días directo en el calendario.</p>
+      <p class="modal-tip">La fecha de salida queda libre para una nueva llegada.</p>
 
       <label class="field">
         <span class="lbl">Familias</span>
@@ -111,7 +111,7 @@
         <input type="text" id="note" class="glass" placeholder="Ej: cumple, mantención…">
       </label>
 
-      <p class="hint" id="hint"></p>
+      <p class="hint" id="hint" aria-live="polite"></p>
 
       <div class="modal-actions">
         <button class="btn ghost" id="cancel">Cancelar</button>
@@ -131,6 +131,6 @@
     <button class="btn primary bb-confirm" id="brush-confirm">Confirmar reserva</button>
   </div>
 
-  <script src="app.js?v=17" defer></script>
+  <script src="app.js?v=18" defer></script>
 </body>
 </html>

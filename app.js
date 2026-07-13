@@ -20,6 +20,11 @@ const CONFIG = {
     { id: "coco",           name: "Coco",           color: "#3B82F6" },
   ],
 
+  externalSources: {
+    airbnb: { name: "Airbnb", color: "#E85D75" },
+    booking: { name: "Booking", color: "#1684D6" },
+  },
+
   weekStart: 1,          // 1 = lunes, 0 = domingo
   yearMin: 2020,
   yearMax: 2040,
@@ -27,7 +32,7 @@ const CONFIG = {
   airbnbMarginDays: 4,   // primer día reservable = hoy + N (margen Airbnb)
 };
 
-const VERSION = "17";  // marca visible (pestaña + badge) para detectar si hay caché
+const VERSION = "18";  // marca visible (pestaña + badge) para detectar si hay caché
 const MONTHS = ["Enero","Febrero","Marzo","Abril","Mayo","Junio",
                 "Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
 const MON_SHORT = ["ene","feb","mar","abr","may","jun","jul","ago","sep","oct","nov","dic"];
@@ -40,8 +45,13 @@ const MAX_DATE = `${CONFIG.yearMax}-12-31`;   // tope de fechas reservables
 const state = {
   view: today(),
   reservations: [],
+  externalEvents: [],
+  syncStatus: [],
   store: null,
   brush: { families: [], start: null, end: null, hover: null },
+  editingId: null,
+  selectionError: null,
+  live: false,
   admin: false,        // modo admin: fechas sin restricción + multi-familia
   lockEnabled: true,   // se carga desde localStorage en setupLock()
   firstBookable: null,
@@ -68,7 +78,32 @@ function firstBookableIso(){
 function pretty(iso){ const { m, d } = parseISO(iso); return `${d} ${MON_SHORT[m]}`; }
 function daysBetween(a, b){
   const da = parseISO(a), db = parseISO(b);
-  return Math.round((Date.UTC(db.y, db.m, db.d) - Date.UTC(da.y, da.m, da.d)) / 86400000) + 1;
+  return Math.round((Date.UTC(db.y, db.m, db.d) - Date.UTC(da.y, da.m, da.d)) / 86400000);
+}
+function addDays(iso, amount){
+  const { y, m, d } = parseISO(iso);
+  const date = new Date(Date.UTC(y, m, d + amount));
+  return isoOf(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
+}
+function sourceInfo(source){
+  return CONFIG.externalSources[source] || { name:"Externo", color:"#64748B" };
+}
+function overlaps(aStart, aEnd, bStart, bEnd){ return aStart < bEnd && aEnd > bStart; }
+function findConflict(start, end, ignoreId = null){
+  const familyConflict = state.reservations.find(r =>
+    r.id !== ignoreId && overlaps(start, end, r.start_date, r.end_date));
+  if (familyConflict) return { type:"family", item:familyConflict };
+  const externalConflict = state.externalEvents.find(r =>
+    overlaps(start, end, r.start_date, r.end_date));
+  return externalConflict ? { type:"external", item:externalConflict } : null;
+}
+function conflictMessage(conflict){
+  if (!conflict) return "";
+  if (conflict.type === "external"){
+    return `El rango se cruza con un bloqueo de ${sourceInfo(conflict.item.source).name}.`;
+  }
+  const family = fam(conflict.item.family_id);
+  return `El rango se cruza con una reserva de ${family?.name || "otra familia"}.`;
 }
 function brushColor(){
   const f = state.brush.families[0] ? fam(state.brush.families[0]) : null;
@@ -88,7 +123,11 @@ function uuid(){
 // ---------- Store: Supabase o LocalStorage ---------------------------
 function localStore(){
   return {
-    async all(){ return JSON.parse(localStorage.getItem(LS_KEY) || "[]"); },
+    async all(){ return {
+      reservations: JSON.parse(localStorage.getItem(LS_KEY) || "[]"),
+      externalEvents: [],
+      syncStatus: [],
+    }; },
     async add(recs){
       const list = JSON.parse(localStorage.getItem(LS_KEY) || "[]");
       localStorage.setItem(LS_KEY, JSON.stringify([...list, ...recs]));
@@ -96,6 +135,10 @@ function localStore(){
     async remove(id){
       const list = JSON.parse(localStorage.getItem(LS_KEY) || "[]");
       localStorage.setItem(LS_KEY, JSON.stringify(list.filter(r => r.id !== id)));
+    },
+    async update(id, changes){
+      const list = JSON.parse(localStorage.getItem(LS_KEY) || "[]");
+      localStorage.setItem(LS_KEY, JSON.stringify(list.map(r => r.id === id ? { ...r, ...changes } : r)));
     },
     onChange(cb){ window.addEventListener("storage", e => { if (e.key === LS_KEY) cb(); }); },
   };
@@ -110,11 +153,31 @@ async function initStore(){
       const { createClient } = await import("https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm");
       const sb = createClient(CONFIG.supabaseUrl, CONFIG.supabaseAnonKey);
       state.store = {
-        async all(){ const { data, error } = await sb.from("reservations").select("*").order("start_date"); if (error) throw error; return data; },
+        async all(){
+          const [reservations, externalEvents, syncStatus] = await Promise.all([
+            sb.from("reservations").select("*").order("start_date"),
+            sb.from("external_calendar_events").select("source,external_uid,start_date,end_date,last_seen_at").order("start_date"),
+            sb.from("calendar_sync_status").select("source,last_success_at,status,event_count,error_message"),
+          ]);
+          if (reservations.error) throw reservations.error;
+          if (externalEvents.error) throw externalEvents.error;
+          if (syncStatus.error) throw syncStatus.error;
+          return {
+            reservations: reservations.data || [],
+            externalEvents: externalEvents.data || [],
+            syncStatus: syncStatus.data || [],
+          };
+        },
         async add(recs){ const { error } = await sb.from("reservations").insert(recs); if (error) throw error; },
         async remove(id){ const { error } = await sb.from("reservations").delete().eq("id", id); if (error) throw error; },
-        onChange(cb){ sb.channel("reservations").on("postgres_changes",
-          { event:"*", schema:"public", table:"reservations" }, () => cb()).subscribe(); },
+        async update(id, changes){ const { error } = await sb.from("reservations").update(changes).eq("id", id); if (error) throw error; },
+        onChange(cb){
+          sb.channel("family-calendar")
+            .on("postgres_changes", { event:"*", schema:"public", table:"reservations" }, () => cb())
+            .on("postgres_changes", { event:"*", schema:"public", table:"external_calendar_events" }, () => cb())
+            .on("postgres_changes", { event:"*", schema:"public", table:"calendar_sync_status" }, () => cb())
+            .subscribe();
+        },
       };
       live = true;
     }catch(err){
@@ -125,24 +188,43 @@ async function initStore(){
   }
   if (!live) state.store = localStore();
 
-  badge.textContent = (live
-    ? "● Modo live · sincronizado"
-    : (configuredButFailed
-        ? "⚠ Modo local (no se pudo conectar a Supabase)"
-        : "○ Modo local · solo este dispositivo (configura Supabase para sincronizar)")) + "  ·  v" + VERSION;
-  badge.classList.toggle("live", live);
-  state.store.onChange(() => load());
+  state.live = live;
+  state.loadError = configuredButFailed ? "No se pudo conectar a Supabase" : null;
+  updateModeBadge();
+  state.store.onChange(scheduleLoad);
+}
+
+let reloadTimer = null;
+function scheduleLoad(){
+  clearTimeout(reloadTimer);
+  reloadTimer = setTimeout(() => load(), 160);
 }
 
 async function load(){
   try{
-    state.reservations = await state.store.all();
+    const data = await state.store.all();
+    state.reservations = data.reservations;
+    state.externalEvents = data.externalEvents;
+    state.syncStatus = data.syncStatus;
     state.loadError = null;
   }catch(err){
     console.error(err);
     state.loadError = (err && err.message) ? err.message : String(err);
   }
+  updateModeBadge();
   render();   // siempre renderiza (con lo último que tenga) y muestra el error si hubo
+}
+
+function updateModeBadge(){
+  const badge = document.getElementById("mode-badge");
+  if (!badge) return;
+  const failedSources = state.syncStatus.filter(item => item.status === "error");
+  let text = state.live ? "● Modo live · sincronizado" : "○ Modo local · solo este dispositivo";
+  if (state.loadError) text = `⚠ ${state.loadError}`;
+  else if (failedSources.length) text = `⚠ ${failedSources.map(item => sourceInfo(item.source).name).join(" y ")} sin actualizar`;
+  badge.textContent = `${text}  ·  v${VERSION}`;
+  badge.classList.toggle("live", state.live && !state.loadError && !failedSources.length);
+  badge.title = failedSources.map(item => `${sourceInfo(item.source).name}: ${item.error_message || "error"}`).join("\n");
 }
 
 // En dispositivos sin hover (touch) no bindeamos mouseenter/mouseleave: la
@@ -161,9 +243,13 @@ function render(){
 // Contenido estático que no cambia: se arma una sola vez al iniciar.
 function buildStatic(){
   document.getElementById("weekdays").innerHTML = WD.map(d => `<div>${d}</div>`).join("");
-  document.getElementById("legend").innerHTML = CONFIG.families.map(f =>
+  const families = CONFIG.families.map(f =>
     `<span class="chip"><span class="dot" style="background:${f.color}"></span>${f.name}</span>`
   ).join("");
+  const sources = Object.entries(CONFIG.externalSources).map(([id, source]) =>
+    `<span class="chip source-chip" data-source="${id}"><span class="dot" style="background:${source.color}"></span>${source.name} · solo lectura</span>`
+  ).join("");
+  document.getElementById("legend").innerHTML = families + sources;
   document.getElementById("fs-menu").innerHTML = CONFIG.families.map(fm => `
     <button type="button" class="fs-row" role="option" tabindex="-1" data-fam="${fm.id}" style="--c:${fm.color}">
       <span class="dot" style="background:${fm.color}"></span>${fm.name}
@@ -232,32 +318,44 @@ function renderGrid(){
     num.textContent = dayNum;
     cell.appendChild(num);
 
-    const dayRes = state.reservations
-      .filter(r => r.start_date <= dateStr && r.end_date >= dateStr)
-      .sort((a,b) => famIdx(a.family_id) - famIdx(b.family_id));
+    const familyItems = state.reservations
+      .filter(r => r.start_date <= dateStr && r.end_date > dateStr)
+      .map(r => ({ ...r, kind:"family" }));
+    const externalItems = state.externalEvents
+      .filter(r => r.start_date <= dateStr && r.end_date > dateStr)
+      .map(r => ({ ...r, id:`${r.source}:${r.external_uid}`, kind:"external" }));
+    const dayItems = [...familyItems, ...externalItems].sort((a,b) => {
+      if (a.kind !== b.kind) return a.kind === "family" ? -1 : 1;
+      if (a.kind === "family") return famIdx(a.family_id) - famIdx(b.family_id);
+      return a.source.localeCompare(b.source);
+    });
 
     const segs = document.createElement("div");
     segs.className = "segments";
-    dayRes.slice(0, CONFIG.maxLanes).forEach(r => {
-      const f = fam(r.family_id) || { name:"?", color:"#888" };
+    dayItems.slice(0, CONFIG.maxLanes).forEach(r => {
+      const f = r.kind === "external"
+        ? sourceInfo(r.source)
+        : (fam(r.family_id) || { name:"?", color:"#888" });
       const isStart = r.start_date === dateStr;
-      const isEnd = r.end_date === dateStr;
+      const isEnd = addDays(r.end_date, -1) === dateStr;
       const cls = ["seg", isStart && "start", isEnd && "end",
-                   (isStart && isEnd) && "pill"].filter(Boolean).join(" ");
+                   (isStart && isEnd) && "pill", r.kind === "external" && "external"].filter(Boolean).join(" ");
       const seg = document.createElement("div");
       seg.className = cls;
       seg.style.background = f.color;
       seg.textContent = (isStart || isEnd) ? f.name : "";
       seg.dataset.id = r.id;
-      seg.title = `${f.name} · ${r.start_date} → ${r.end_date}${r.note ? " · " + r.note : ""}`;
+      seg.title = r.kind === "external"
+        ? `${f.name} · ${r.start_date} → ${r.end_date} · Solo lectura`
+        : `${f.name} · ${r.start_date} → ${r.end_date}${r.note ? " · " + r.note : ""}`;
       seg.addEventListener("click", e => { e.stopPropagation(); openPopover(r, seg); });
       segs.appendChild(seg);
     });
-    if (dayRes.length > CONFIG.maxLanes){
+    if (dayItems.length > CONFIG.maxLanes){
       const more = document.createElement("div");
       more.className = "seg pill";
       more.style.background = "rgba(255,255,255,.25)";
-      more.textContent = `+${dayRes.length - CONFIG.maxLanes}`;
+      more.textContent = `+${dayItems.length - CONFIG.maxLanes}`;
       segs.appendChild(more);
     }
     cell.appendChild(segs);
@@ -300,6 +398,7 @@ function selectFamily(id){
     b.families = (b.families[0] === id) ? [] : [id];                // single (toggle)
   }
   b.start = b.end = b.hover = null;
+  state.selectionError = null;
   if (!state.admin) toggleMenu(false);   // admin: deja abierto para elegir más
   render();
 }
@@ -308,8 +407,17 @@ function onCellClick(dateStr){
   const b = state.brush;
   if (!b.families.length) return;
   if (!state.admin && dateStr < state.firstBookable) return;   // admin reserva en cualquier fecha
-  if (!b.start || dateStr < b.start){ b.start = dateStr; b.end = dateStr; }  // LLEGADA
-  else { b.end = dateStr; }                                                   // SALIDA
+  state.selectionError = null;
+  if (!b.start || dateStr <= b.start){
+    const dayConflict = findConflict(dateStr, addDays(dateStr, 1));
+    if (dayConflict){ state.selectionError = conflictMessage(dayConflict); render(); return; }
+    b.start = dateStr;
+    b.end = null;
+  } else {
+    const conflict = findConflict(b.start, dateStr);
+    if (conflict){ state.selectionError = conflictMessage(conflict); render(); return; }
+    b.end = dateStr;
+  }
   b.hover = null;
   render();
 }
@@ -319,17 +427,16 @@ function updatePreview(){
   root.style.setProperty("--brush", brushColor());
   const cells = root.querySelectorAll(".cell[data-date]");
   if (!b.start){
-    cells.forEach(c => c.classList.remove("in-range","range-start","range-end","single"));
+    cells.forEach(c => c.classList.remove("in-range","range-start","range-end","range-checkout","single"));
     return;
   }
-  const end = (b.hover && b.hover >= b.start) ? b.hover : b.end;
-  const single = b.start === end;
+  const end = (b.hover && b.hover > b.start) ? b.hover : b.end;
   cells.forEach(c => {
     const d = c.dataset.date;
-    c.classList.toggle("range-start", d === b.start && !single);
-    c.classList.toggle("range-end", d === end && !single);
-    c.classList.toggle("single", d === b.start && single);
-    c.classList.toggle("in-range", d > b.start && d < end);
+    c.classList.toggle("range-start", d === b.start);
+    c.classList.toggle("range-checkout", Boolean(end) && d === end);
+    c.classList.toggle("single", !end && d === b.start);
+    c.classList.toggle("in-range", Boolean(end) && d > b.start && d < end);
   });
 }
 
@@ -337,9 +444,10 @@ function updateHintBar(){
   const el = document.getElementById("hint-bar"), b = state.brush;
   let txt;
   if (state.loadError) txt = "⚠️ No se pudieron cargar las reservas: " + state.loadError;
+  else if (state.selectionError) txt = `⚠️ ${state.selectionError}`;
   else if (!b.families.length) txt = "👆 Elige una familia arriba para empezar a reservar";
   else if (!b.start) txt = "Toca el día de LLEGADA";
-  else if (b.start === b.end) txt = "Toca el día de SALIDA, o confirma para 1 día";
+  else if (!b.end) txt = "Toca el día de SALIDA · esa fecha quedará libre";
   else txt = `Llegada ${pretty(b.start)} → Salida ${pretty(b.end)} · toca Confirmar`;
   el.textContent = txt;
   el.classList.toggle("active", b.families.length > 0 && !state.loadError);
@@ -349,20 +457,24 @@ function updateBrushBar(){
   const bar = document.getElementById("brush-bar"), b = state.brush;
   if (!b.start){ bar.classList.remove("show"); return; }
   bar.classList.add("show");
-  const range = b.start === b.end
-    ? `Llegada ${pretty(b.start)}`
-    : `Llegada ${pretty(b.start)} → Salida ${pretty(b.end)}`;
-  const n = daysBetween(b.start, b.end);
+  const range = b.end
+    ? `Llegada ${pretty(b.start)} → Salida ${pretty(b.end)}`
+    : `Llegada ${pretty(b.start)} · elige salida`;
+  const n = b.end ? daysBetween(b.start, b.end) : 0;
   bar.querySelector(".bb-fam").textContent = b.families.length === 1
     ? (fam(b.families[0])?.name || "")
     : (b.families.length + " familias");
-  bar.querySelector(".bb-range").textContent = `${range} · ${n} ${n===1?"día":"días"}`;
-  bar.querySelector(".bb-confirm").style.background = brushColor();
+  bar.querySelector(".bb-range").textContent = b.end ? `${range} · ${n} ${n===1?"noche":"noches"}` : range;
+  const confirm = bar.querySelector(".bb-confirm");
+  confirm.style.background = brushColor();
+  confirm.disabled = !b.end;
 }
 
 async function confirmBrush(){
   const b = state.brush;
-  if (!b.start || !b.families.length) return;
+  if (!b.start || !b.end || !b.families.length) return;
+  const conflict = findConflict(b.start, b.end);
+  if (conflict){ state.selectionError = conflictMessage(conflict); render(); return; }
   const recs = b.families.map(family_id => ({
     id: uuid(), family_id, start_date: b.start, end_date: b.end, note: ""
   }));
@@ -376,6 +488,7 @@ async function confirmBrush(){
 
 function cancelSelection(){
   state.brush.start = state.brush.end = state.brush.hover = null;
+  state.selectionError = null;
   render();
 }
 
@@ -392,8 +505,10 @@ async function doUndo(){
   try{
     if (entry.op === "remove"){           // el cambio fue un ALTA → borrar esos ids
       for (const r of entry.recs) await state.store.remove(r.id);
-    } else {                              // el cambio fue una BAJA → reinsertar
+    } else if (entry.op === "add"){       // el cambio fue una BAJA → reinsertar
       await state.store.add(entry.recs);
+    } else if (entry.op === "update"){
+      await state.store.update(entry.before.id, entry.before);
     }
     await load();
   }catch(err){
@@ -434,30 +549,37 @@ function updateAdminUI(){
   document.body.classList.toggle("admin-mode", state.admin);
 }
 
-// ---------- Modal nueva reserva (secundario) -------------------------
-function openModal({ start, end }){
+// ---------- Modal nueva / editar reserva -----------------------------
+function openModal({ start, end, reservation = null }){
   const modal = document.getElementById("modal");
   const startEl = document.getElementById("start");
   const endEl = document.getElementById("end");
   const minD = state.admin ? `${CONFIG.yearMin}-01-01` : state.firstBookable;
+  state.editingId = reservation?.id || null;
   startEl.min = minD; startEl.max = MAX_DATE;
-  endEl.min = minD;   endEl.max = MAX_DATE;
+  endEl.min = addDays(start || minD, 1); endEl.max = MAX_DATE;
   startEl.value = start; endEl.value = end;
-  document.getElementById("note").value = "";
+  document.getElementById("note").value = reservation?.note || "";
   document.getElementById("hint").textContent = "";
+  document.getElementById("modal-title").textContent = reservation ? "Editar reserva" : "Nueva reserva";
+  document.getElementById("save").textContent = reservation ? "Guardar cambios" : "Guardar";
 
   const fc = document.getElementById("fam-checks");
   fc.innerHTML = CONFIG.families.map(f => `
     <label class="fam-opt">
-      <input type="checkbox" value="${f.id}">
+      <input type="${reservation ? "radio" : "checkbox"}" name="modal-family" value="${f.id}" ${reservation?.family_id === f.id ? "checked" : ""}>
       <span class="swatch" style="background:${f.color}"></span>
       <span class="nm">${f.name}</span>
     </label>`).join("");
 
   modal.hidden = false;
+  requestAnimationFrame(() => startEl.focus());
 }
 
-function closeModal(){ document.getElementById("modal").hidden = true; }
+function closeModal(){
+  document.getElementById("modal").hidden = true;
+  state.editingId = null;
+}
 
 async function saveReservation(){
   const ids = [...document.querySelectorAll("#fam-checks input:checked")].map(c => c.value);
@@ -468,16 +590,34 @@ async function saveReservation(){
 
   if (!ids.length){ hint.textContent = "Selecciona al menos una familia."; return; }
   if (!start || !end){ hint.textContent = "Faltan fechas."; return; }
-  if (end < start){ hint.textContent = "La fecha 'Hasta' no puede ser anterior a 'Desde'."; return; }
+  if (end <= start){ hint.textContent = "La salida debe ser posterior a la llegada."; return; }
   if (!state.admin && start < state.firstBookable){ hint.textContent = "Esa fecha está dentro del margen no disponible."; return; }
   if (end > MAX_DATE){ hint.textContent = `La fecha no puede ser posterior a ${MAX_DATE}.`; return; }
 
-  const recs = ids.map(family_id => ({
-    id: uuid(), family_id, start_date: start, end_date: end, note
-  }));
+  const beforeEdit = state.editingId ? state.reservations.find(r => r.id === state.editingId) : null;
+  const datesUnchanged = Boolean(beforeEdit && beforeEdit.start_date === start && beforeEdit.end_date === end);
+  const conflict = datesUnchanged ? null : findConflict(start, end, state.editingId);
+  if (conflict){ hint.textContent = conflictMessage(conflict); return; }
+
   try{
-    await state.store.add(recs);
-    pushUndo({ op:"remove", recs });
+    if (state.editingId){
+      const before = beforeEdit;
+      if (!before) throw new Error("La reserva ya no existe");
+      const after = { ...before, family_id:ids[0], start_date:start, end_date:end, note };
+      await state.store.update(before.id, {
+        family_id:after.family_id,
+        start_date:after.start_date,
+        end_date:after.end_date,
+        note:after.note,
+      });
+      pushUndo({ op:"update", before, after });
+    } else {
+      const recs = ids.map(family_id => ({
+        id: uuid(), family_id, start_date: start, end_date: end, note
+      }));
+      await state.store.add(recs);
+      pushUndo({ op:"remove", recs });
+    }
     closeModal();
     await load();
   }catch(err){
@@ -485,18 +625,36 @@ async function saveReservation(){
   }
 }
 
-// ---------- Popover eliminar ----------
+// ---------- Detalle de reserva / bloqueo externo --------------------
 function openPopover(r, anchor){
   const pop = document.getElementById("pop");
+  if (r.kind === "external"){
+    const source = sourceInfo(r.source);
+    pop.innerHTML = `
+      <div class="ptitle"><span class="dot" style="display:inline-block;background:${source.color};margin-right:6px"></span>${source.name}</div>
+      <div class="preadonly">Bloqueo externo · Solo lectura</div>
+      <div class="prow"><span>Llegada</span><b>${r.start_date}</b></div>
+      <div class="prow"><span>Salida</span><b>${r.end_date}</b></div>`;
+    pop.hidden = false;
+    positionPopover(pop, anchor);
+    return;
+  }
   const f = fam(r.family_id) || { name:"?", color:"#888" };
   pop.innerHTML = `
     <div class="ptitle"><span class="dot" style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${f.color};margin-right:6px"></span>${f.name}</div>
     <div class="prow"><span>Llegada</span><b>${r.start_date}</b></div>
     <div class="prow"><span>Salida</span><b>${r.end_date}</b></div>
     ${r.note ? `<div class="prow"><span>Nota</span><b>${escapeHtml(r.note)}</b></div>` : ""}
-    <button class="pdel">Eliminar reserva</button>`;
+    <div class="pactions">
+      <button class="pedit">Editar</button>
+      <button class="pdel">Eliminar</button>
+    </div>`;
   pop.hidden = false;
   positionPopover(pop, anchor);
+  pop.querySelector(".pedit").addEventListener("click", () => {
+    pop.hidden = true;
+    openModal({ start:r.start_date, end:r.end_date, reservation:r });
+  });
   pop.querySelector(".pdel").addEventListener("click", async () => {
     try{ await state.store.remove(r.id); pushUndo({ op:"add", recs:[r] }); pop.hidden = true; await load(); }
     catch(err){ alert("No se pudo eliminar: " + err.message); }
@@ -542,7 +700,7 @@ function bind(){
   document.getElementById("next").addEventListener("click", () => move(1));
   document.getElementById("today").addEventListener("click", () => { state.view = today(); render(); });
   document.getElementById("add").addEventListener("click", () => {
-    openModal({ start: state.firstBookable, end: state.firstBookable });
+    openModal({ start: state.firstBookable, end: addDays(state.firstBookable, 1) });
   });
   document.getElementById("month").addEventListener("change", e => { state.view.m = +e.target.value; render(); });
   document.getElementById("year").addEventListener("change", e => { state.view.y = +e.target.value; render(); });
@@ -562,6 +720,12 @@ function bind(){
 
   document.getElementById("cancel").addEventListener("click", closeModal);
   document.getElementById("save").addEventListener("click", saveReservation);
+  document.getElementById("start").addEventListener("change", e => {
+    if (!e.target.value) return;
+    const end = document.getElementById("end");
+    end.min = addDays(e.target.value, 1);
+    if (!end.value || end.value <= e.target.value) end.value = addDays(e.target.value, 1);
+  });
   document.getElementById("modal").addEventListener("click", e => { if (e.target.id === "modal") closeModal(); });
 
   // cerrar popover y menú al hacer click fuera
