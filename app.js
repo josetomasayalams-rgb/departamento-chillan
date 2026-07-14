@@ -33,7 +33,7 @@ const CONFIG = {
   airbnbMarginDays: 4,   // primer día reservable = hoy + N (margen Airbnb)
 };
 
-const VERSION = "21";  // marca visible (pestaña + badge) para detectar si hay caché
+const VERSION = "22";  // marca visible (pestaña + badge) para detectar si hay caché
 const MONTHS = ["Enero","Febrero","Marzo","Abril","Mayo","Junio",
                 "Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
 const MON_SHORT = ["ene","feb","mar","abr","may","jun","jul","ago","sep","oct","nov","dic"];
@@ -249,7 +249,7 @@ function buildStatic(){
 }
 
 function renderReservationOptions(){
-  const families = selectableFamilies().map(f =>
+  const families = CONFIG.families.map(f =>
     `<span class="chip"><span class="dot" style="background:${f.color}"></span>${f.name}</span>`
   ).join("");
   const sources = Object.entries(CONFIG.externalSources).map(([id, source]) =>
