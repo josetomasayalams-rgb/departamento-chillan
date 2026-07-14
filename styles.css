@@ -242,11 +242,6 @@ body.admin-mode .app{ box-shadow:0 0 0 2px #f59e0b, var(--shadow); }
 .popover .ptitle{ font-weight:600; margin-bottom:8px; }
 .popover .prow{ display:flex; justify-content:space-between; gap:10px; padding:7px 0; border-top:1px solid var(--glass-brd-soft); }
 .popover .prow:first-of-type{ border-top:none; }
-.popover .preadonly{
-  margin:0 0 8px; padding:6px 8px; border-radius:7px;
-  color:#dbeafe; background:rgba(59,130,246,.16); border:1px solid rgba(147,197,253,.3);
-  font-size:11px; font-weight:600;
-}
 .popover .pactions{ display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:10px; }
 .popover .pedit,
 .popover .pdel{

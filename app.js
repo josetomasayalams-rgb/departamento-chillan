@@ -18,6 +18,7 @@ const CONFIG = {
     { id: "ayala-gonzalez", name: "Ayala Gonzalez", color: "#F59E0B" },
     { id: "cattan-ayala",   name: "Cattan Ayala",   color: "#EC4899" },
     { id: "coco",           name: "Coco",           color: "#3B82F6" },
+    { id: "particular",     name: "Reserva particular", color: "#F97316", adminOnly: true },
   ],
 
   externalSources: {
@@ -32,7 +33,7 @@ const CONFIG = {
   airbnbMarginDays: 4,   // primer día reservable = hoy + N (margen Airbnb)
 };
 
-const VERSION = "19";  // marca visible (pestaña + badge) para detectar si hay caché
+const VERSION = "21";  // marca visible (pestaña + badge) para detectar si hay caché
 const MONTHS = ["Enero","Febrero","Marzo","Abril","Mayo","Junio",
                 "Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
 const MON_SHORT = ["ene","feb","mar","abr","may","jun","jul","ago","sep","oct","nov","dic"];
@@ -70,6 +71,7 @@ function today(){
 function parseISO(s){ const [y,m,d] = s.split("-").map(Number); return {y,m:m-1,d}; }
 function fam(id){ return CONFIG.families.find(f => f.id === id); }
 function famIdx(id){ return CONFIG.families.findIndex(f => f.id === id); }
+function selectableFamilies(){ return CONFIG.families.filter(f => state.admin || !f.adminOnly); }
 function firstBookableIso(){
   const d = new Date();
   d.setDate(d.getDate() + CONFIG.airbnbMarginDays);
@@ -243,14 +245,18 @@ function render(){
 // Contenido estático que no cambia: se arma una sola vez al iniciar.
 function buildStatic(){
   document.getElementById("weekdays").innerHTML = WD.map(d => `<div>${d}</div>`).join("");
-  const families = CONFIG.families.map(f =>
+  renderReservationOptions();
+}
+
+function renderReservationOptions(){
+  const families = selectableFamilies().map(f =>
     `<span class="chip"><span class="dot" style="background:${f.color}"></span>${f.name}</span>`
   ).join("");
   const sources = Object.entries(CONFIG.externalSources).map(([id, source]) =>
-    `<span class="chip source-chip" data-source="${id}"><span class="dot" style="background:${source.color}"></span>${source.name} · solo lectura</span>`
+    `<span class="chip source-chip" data-source="${id}"><span class="dot" style="background:${source.color}"></span>${source.name}</span>`
   ).join("");
   document.getElementById("legend").innerHTML = families + sources;
-  document.getElementById("fs-menu").innerHTML = CONFIG.families.map(fm => `
+  document.getElementById("fs-menu").innerHTML = selectableFamilies().map(fm => `
     <button type="button" class="fs-row" role="option" tabindex="-1" data-fam="${fm.id}" style="--c:${fm.color}">
       <span class="dot" style="background:${fm.color}"></span>${fm.name}
     </button>`).join("");
@@ -346,7 +352,7 @@ function renderGrid(){
       seg.textContent = (isStart || isEnd) ? f.name : "";
       seg.dataset.id = r.id;
       seg.title = r.kind === "external"
-        ? `${f.name} · ${r.start_date} → ${r.end_date} · Solo lectura`
+        ? `${f.name} · ${r.start_date} → ${r.end_date}`
         : `${f.name} · ${r.start_date} → ${r.end_date}${r.note ? " · " + r.note : ""}`;
       seg.addEventListener("click", e => { e.stopPropagation(); openPopover(r, seg); });
       segs.appendChild(seg);
@@ -390,10 +396,17 @@ function toggleMenu(open, autofocus = true){
 }
 
 function selectFamily(id){
+  const selectedFamily = fam(id);
+  if (!selectedFamily || (selectedFamily.adminOnly && !state.admin)) return;
   const b = state.brush;
   if (state.admin){
-    const i = b.families.indexOf(id);
-    if (i >= 0) b.families.splice(i,1); else b.families.push(id);   // acumula (multi)
+    if (selectedFamily.adminOnly){
+      b.families = b.families.includes(id) ? [] : [id];
+    } else {
+      b.families = b.families.filter(familyId => !fam(familyId)?.adminOnly);
+      const i = b.families.indexOf(id);
+      if (i >= 0) b.families.splice(i,1); else b.families.push(id);   // acumula (multi)
+    }
   } else {
     b.families = (b.families[0] === id) ? [] : [id];                // single (toggle)
   }
@@ -524,15 +537,17 @@ function updateUndoBtn(){
   btn.textContent = state.undo.length ? `↩ Deshacer (${state.undo.length})` : "↩ Deshacer";
 }
 
-// ---------- Modo admin (clave 9014): fechas sin restricción + multi-familia ----------
+// ---------- Modo admin (clave 2407): fechas sin restricción + multi-familia ----------
 function toggleAdmin(){
   if (state.admin){
     state.admin = false;
-    state.brush.families = state.brush.families.slice(0,1);   // vuelve a selección simple
+    state.brush.families = state.brush.families
+      .filter(id => !fam(id)?.adminOnly)
+      .slice(0,1);   // vuelve a selección simple y retira opciones exclusivas de admin
   } else {
     const key = prompt("Clave de admin:");
     if (key === null) return;
-    if (key === "9014") state.admin = true;
+    if (key === "2407") state.admin = true;
     else { alert("Clave incorrecta"); return; }
   }
   updateAdminUI();
@@ -547,6 +562,7 @@ function updateAdminUI(){
   const lockBtn = document.getElementById("lock-toggle");
   if (lockBtn) lockBtn.hidden = !state.admin;
   document.body.classList.toggle("admin-mode", state.admin);
+  renderReservationOptions();
 }
 
 // ---------- Modal nueva / editar reserva -----------------------------
@@ -565,7 +581,7 @@ function openModal({ start, end, reservation = null }){
   document.getElementById("save").textContent = reservation ? "Guardar cambios" : "Guardar";
 
   const fc = document.getElementById("fam-checks");
-  fc.innerHTML = CONFIG.families.map(f => `
+  fc.innerHTML = selectableFamilies().map(f => `
     <label class="fam-opt">
       <input type="${reservation ? "radio" : "checkbox"}" name="modal-family" value="${f.id}" ${reservation?.family_id === f.id ? "checked" : ""}>
       <span class="swatch" style="background:${f.color}"></span>
@@ -632,7 +648,6 @@ function openPopover(r, anchor){
     const source = sourceInfo(r.source);
     pop.innerHTML = `
       <div class="ptitle"><span class="dot" style="display:inline-block;background:${source.color};margin-right:6px"></span>${source.name}</div>
-      <div class="preadonly">Bloqueo externo · Solo lectura</div>
       <div class="prow"><span>Llegada</span><b>${r.start_date}</b></div>
       <div class="prow"><span>Salida</span><b>${r.end_date}</b></div>`;
     pop.hidden = false;
@@ -640,17 +655,19 @@ function openPopover(r, anchor){
     return;
   }
   const f = fam(r.family_id) || { name:"?", color:"#888" };
+  const canModify = !f.adminOnly || state.admin;
   pop.innerHTML = `
     <div class="ptitle"><span class="dot" style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${f.color};margin-right:6px"></span>${f.name}</div>
     <div class="prow"><span>Llegada</span><b>${r.start_date}</b></div>
     <div class="prow"><span>Salida</span><b>${r.end_date}</b></div>
     ${r.note ? `<div class="prow"><span>Nota</span><b>${escapeHtml(r.note)}</b></div>` : ""}
-    <div class="pactions">
+    ${canModify ? `<div class="pactions">
       <button class="pedit">Editar</button>
       <button class="pdel">Eliminar</button>
-    </div>`;
+    </div>` : ""}`;
   pop.hidden = false;
   positionPopover(pop, anchor);
+  if (!canModify) return;
   pop.querySelector(".pedit").addEventListener("click", () => {
     pop.hidden = true;
     openModal({ start:r.start_date, end:r.end_date, reservation:r });
@@ -727,6 +744,19 @@ function bind(){
     if (!end.value || end.value <= e.target.value) end.value = addDays(e.target.value, 1);
   });
   document.getElementById("modal").addEventListener("click", e => { if (e.target.id === "modal") closeModal(); });
+  document.getElementById("fam-checks").addEventListener("change", e => {
+    const input = e.target.closest("input");
+    if (!input?.checked) return;
+    const selectedFamily = fam(input.value);
+    const options = [...document.querySelectorAll("#fam-checks input")];
+    if (selectedFamily?.adminOnly){
+      options.forEach(option => { if (option !== input) option.checked = false; });
+    } else {
+      options.forEach(option => {
+        if (fam(option.value)?.adminOnly) option.checked = false;
+      });
+    }
+  });
 
   // cerrar popover y menú al hacer click fuera
   document.addEventListener("click", e => {
