@@ -524,7 +524,7 @@ function updateUndoBtn(){
   btn.textContent = state.undo.length ? `↩ Deshacer (${state.undo.length})` : "↩ Deshacer";
 }
 
-// ---------- Modo admin (clave 2407): fechas sin restricción + multi-familia ----------
+// ---------- Modo admin (clave 9014): fechas sin restricción + multi-familia ----------
 function toggleAdmin(){
   if (state.admin){
     state.admin = false;
@@ -532,7 +532,7 @@ function toggleAdmin(){
   } else {
     const key = prompt("Clave de admin:");
     if (key === null) return;
-    if (key === "2407") state.admin = true;
+    if (key === "9014") state.admin = true;
     else { alert("Clave incorrecta"); return; }
   }
   updateAdminUI();
@@ -793,7 +793,7 @@ function updateLockToggleBtn(){
 }
 
 function setupLock(){
-  const FAMILY_KEY = "2407";
+  const FAMILY_KEY = "9014";
   const lock = document.getElementById("lock");
   const pins = Array.from(document.querySelectorAll("#lock-pins .lock-pin"));
   const err = document.getElementById("lock-err");
