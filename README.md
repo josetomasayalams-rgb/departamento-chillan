@@ -113,6 +113,23 @@ order by source;
   `calendar-ical-sync-15m` desde Supabase Cron. Los ultimos bloqueos permanecen
   visibles hasta la siguiente sincronizacion correcta o su eliminacion manual.
 
+## Seguimiento de publicacion externa
+
+Cada alta comparte una `availability_version` entre todas las familias elegidas.
+El frontend vuelve a leer el feed con `no-store` y solo marca **Publicado en
+feed** cuando encuentra todos los UID, fechas, `STATUS:CONFIRMED` y
+`TRANSP:OPAQUE` esperados. Cambiar llegada o salida crea una version nueva y
+reinicia las verificaciones; cambiar familia o nota conserva la version.
+
+Airbnb y Booking no entregan una confirmacion automatica de importacion. Por
+eso la PWA mantiene la reserva como **Pendiente externo** hasta que una persona
+abre cada canal, revisa las noches bloqueadas y usa **Marcar verificado**. Al
+vencer las ventanas orientativas de dos horas para Booking o tres horas para
+Airbnb, el estado cambia a **Revision requerida**, nunca a verificado.
+
+En modo local la ficha indica expresamente que los datos permanecen solo en el
+dispositivo y no se publican en los canales.
+
 ## Archivos principales
 
 - `app.js`, `index.html`, `styles.css`: PWA familiar.

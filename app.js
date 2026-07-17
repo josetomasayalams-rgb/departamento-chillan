@@ -26,6 +26,12 @@ const CONFIG = {
     booking: { name: "Booking", color: "#1684D6" },
   },
 
+  familyFeedUrl: "https://uimqusoylxpyljbfqumm.supabase.co/functions/v1/calendar-ical/calendario-familiar.ics",
+  providerAdminUrls: {
+    airbnb: "https://www.airbnb.cl/multicalendar/1729206776074121490/availability-settings",
+    booking: "https://admin.booking.com/hotel/hoteladmin/extranet_ng/manage/sync/index.html?hotel_id=16884094&lang=es",
+  },
+
   weekStart: 1,          // 1 = lunes, 0 = domingo
   yearMin: 2020,
   yearMax: 2040,
@@ -33,7 +39,7 @@ const CONFIG = {
   airbnbMarginDays: 4,   // primer día reservable = hoy + N (margen Airbnb)
 };
 
-const VERSION = "22";  // marca visible (pestaña + badge) para detectar si hay caché
+const VERSION = "23";  // marca visible (pestaña + badge) para detectar si hay caché
 const MONTHS = ["Enero","Febrero","Marzo","Abril","Mayo","Junio",
                 "Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
 const MON_SHORT = ["ene","feb","mar","abr","may","jun","jul","ago","sep","oct","nov","dic"];
@@ -57,6 +63,7 @@ const state = {
   lockEnabled: true,   // se carga desde localStorage en setupLock()
   firstBookable: null,
   loadError: null,
+  feedChecks: new Map(),
   menuIdx: 0,
   undo: [],          // pila de inversas (máx 7) para Deshacer
 };
@@ -122,6 +129,23 @@ function uuid(){
        +"-"+h.slice(8,10).join("")+"-"+h.slice(10,16).join("");
 }
 
+function nowIso(){ return new Date().toISOString(); }
+function availabilityGroup(version){
+  return state.reservations.filter(r => r.availability_version === version);
+}
+function formatSyncTime(value){
+  if (!value) return "N/D";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "N/D";
+  return new Intl.DateTimeFormat("es-CL", {
+    timeZone:"America/Santiago",
+    day:"2-digit",
+    month:"short",
+    hour:"2-digit",
+    minute:"2-digit",
+  }).format(date);
+}
+
 // ---------- Store: Supabase o LocalStorage ---------------------------
 function localStore(){
   return {
@@ -140,7 +164,20 @@ function localStore(){
     },
     async update(id, changes){
       const list = JSON.parse(localStorage.getItem(LS_KEY) || "[]");
-      localStorage.setItem(LS_KEY, JSON.stringify(list.map(r => r.id === id ? { ...r, ...changes } : r)));
+      localStorage.setItem(LS_KEY, JSON.stringify(list.map(r => {
+        if (r.id !== id) return r;
+        return ReservationSync.applyAvailabilityUpdate(r, changes, {
+          version:uuid(),
+          changedAt:nowIso(),
+        });
+      })));
+    },
+    async markVerified(version, target){
+      const field = `${target}_verified_at`;
+      const list = JSON.parse(localStorage.getItem(LS_KEY) || "[]");
+      localStorage.setItem(LS_KEY, JSON.stringify(list.map(r =>
+        r.availability_version === version ? { ...r, [field]:nowIso() } : r
+      )));
     },
     onChange(cb){ window.addEventListener("storage", e => { if (e.key === LS_KEY) cb(); }); },
   };
@@ -173,6 +210,13 @@ async function initStore(){
         async add(recs){ const { error } = await sb.from("reservations").insert(recs); if (error) throw error; },
         async remove(id){ const { error } = await sb.from("reservations").delete().eq("id", id); if (error) throw error; },
         async update(id, changes){ const { error } = await sb.from("reservations").update(changes).eq("id", id); if (error) throw error; },
+        async markVerified(version, target){
+          const field = `${target}_verified_at`;
+          const { error } = await sb.from("reservations")
+            .update({ [field]:nowIso() })
+            .eq("availability_version", version);
+          if (error) throw error;
+        },
         onChange(cb){
           sb.channel("family-calendar")
             .on("postgres_changes", { event:"*", schema:"public", table:"reservations" }, () => cb())
@@ -215,6 +259,47 @@ async function load(){
   }
   updateModeBadge();
   render();   // siempre renderiza (con lo último que tenga) y muestra el error si hubo
+  schedulePendingFeedChecks();
+}
+
+function schedulePendingFeedChecks(){
+  if (!state.live) return;
+  const versions = new Set(state.reservations
+    .filter(r => r.availability_version && !r.feed_verified_at)
+    .map(r => r.availability_version));
+  versions.forEach(version => {
+    if (state.feedChecks.has(version)) return;
+    state.feedChecks.set(version, { status:"queued", error:null });
+    setTimeout(() => verifyFeedPublication(version), 0);
+  });
+}
+
+async function verifyFeedPublication(version){
+  if (!state.live || !version) return false;
+  const group = availabilityGroup(version);
+  if (!group.length) return false;
+  if (group.every(r => isVerifiedSince(r.feed_verified_at, r.availability_changed_at))) return true;
+  if (state.feedChecks.get(version)?.status === "verifying") return false;
+  state.feedChecks.set(version, { status:"verifying", error:null });
+  try{
+    const url = new URL(CONFIG.familyFeedUrl);
+    url.searchParams.set("verify", `${version}-${Date.now()}`);
+    const response = await fetch(url, { cache:"no-store" });
+    if (!response.ok) throw new Error(`El feed respondió HTTP ${response.status}`);
+    const result = ReservationSync.verifyAvailabilityVersion(await response.text(), group);
+    if (!result.ok) throw new Error(result.reason || "La reserva aún no aparece en el feed");
+    await state.store.markVerified(version, "feed");
+    state.feedChecks.set(version, { status:"verified", error:null });
+    await load();
+    return true;
+  }catch(err){
+    state.feedChecks.set(version, {
+      status:"error",
+      error:(err && err.message) ? err.message : String(err),
+    });
+    render();
+    return false;
+  }
 }
 
 function updateModeBadge(){
@@ -616,6 +701,8 @@ async function saveReservation(){
   if (conflict){ hint.textContent = conflictMessage(conflict); return; }
 
   try{
+    const editedId = state.editingId;
+    let requestedVersion = null;
     if (state.editingId){
       const before = beforeEdit;
       if (!before) throw new Error("La reserva ya no existe");
@@ -628,17 +715,138 @@ async function saveReservation(){
       });
       pushUndo({ op:"update", before, after });
     } else {
-      const recs = ids.map(family_id => ({
-        id: uuid(), family_id, start_date: start, end_date: end, note
-      }));
+      requestedVersion = uuid();
+      const changedAt = nowIso();
+      const recs = ids.map(family_id => {
+        const record = {
+          id:uuid(), family_id, start_date:start, end_date:end, note,
+          availability_version:requestedVersion,
+        };
+        return state.live ? record : {
+          ...record,
+          availability_changed_at:changedAt,
+          feed_verified_at:null,
+          airbnb_verified_at:null,
+          booking_verified_at:null,
+        };
+      });
       await state.store.add(recs);
       pushUndo({ op:"remove", recs });
     }
     closeModal();
     await load();
+    const saved = editedId ? state.reservations.find(r => r.id === editedId) : null;
+    const version = saved?.availability_version || requestedVersion;
+    if (state.live && version) await verifyFeedPublication(version);
   }catch(err){
     hint.textContent = "Error al guardar: " + err.message;
   }
+}
+
+function isVerifiedSince(verifiedAt, changedAt){
+  const verified = Date.parse(verifiedAt || "");
+  const changed = Date.parse(changedAt || "");
+  return Number.isFinite(verified) && Number.isFinite(changed) && verified >= changed;
+}
+
+function providerSyncView(r, provider){
+  const info = sourceInfo(provider);
+  const verifiedAt = r[`${provider}_verified_at`];
+  const derived = ReservationSync.providerState({
+    provider,
+    changedAt:r.availability_changed_at,
+    verifiedAt,
+  });
+  if (derived.status === "verified") return {
+    status:"verified",
+    label:"Verificado",
+    detail:formatSyncTime(verifiedAt),
+    name:info.name,
+  };
+  if (derived.status === "pending") return {
+    status:"pending",
+    label:`Pendiente en ${info.name}`,
+    detail:`Revisar antes de ${formatSyncTime(derived.deadline)}`,
+    name:info.name,
+  };
+  return {
+    status:"review-required",
+    label:"Revisión requerida",
+    detail:`${info.name} · plazo ${formatSyncTime(derived.deadline)}`,
+    name:info.name,
+  };
+}
+
+function renderExternalSync(r){
+  if (!state.live){
+    return `<section class="external-sync local-sync" aria-label="Sincronización externa">
+      <h3>Sincronización externa</h3>
+      <p><strong>Solo este dispositivo</strong> · no se publica en Airbnb ni Booking.</p>
+    </section>`;
+  }
+  const check = state.feedChecks.get(r.availability_version);
+  const feedCurrent = isVerifiedSince(r.feed_verified_at, r.availability_changed_at);
+  let feedStatus = "verifying", feedLabel = "Verificando publicación", feedDetail = "Comprobando el feed familiar";
+  if (feedCurrent){
+    feedStatus = "verified";
+    feedLabel = "Publicado en feed";
+    feedDetail = formatSyncTime(r.feed_verified_at);
+  } else if (check?.status === "error"){
+    feedStatus = "error";
+    feedLabel = "Error de publicación";
+    feedDetail = escapeHtml(check.error || "No se pudo comprobar el feed");
+  }
+  const providers = [providerSyncView(r, "booking"), providerSyncView(r, "airbnb")];
+  const allVerified = feedCurrent && providers.every(item => item.status === "verified");
+  return `<section class="external-sync" aria-label="Sincronización externa">
+    <div class="sync-heading">
+      <h3>Sincronización externa</h3>
+      <span class="sync-overall ${allVerified ? "verified" : "pending"}">${allVerified ? "Verificado" : "Pendiente externo"}</span>
+    </div>
+    <p class="sync-changed">Último cambio: ${formatSyncTime(r.availability_changed_at)}</p>
+    <div class="sync-row ${feedStatus}">
+      <span class="sync-dot" aria-hidden="true"></span>
+      <span><strong>${feedLabel}</strong><small>${feedDetail}</small></span>
+      ${feedStatus === "error" ? `<button type="button" class="sync-retry" data-sync-retry>Reintentar</button>` : ""}
+    </div>
+    ${providers.map((item, index) => {
+      const provider = index === 0 ? "booking" : "airbnb";
+      return `<div class="sync-row ${item.status}">
+        <span class="sync-dot" aria-hidden="true"></span>
+        <span><strong>${item.label}</strong><small>${item.detail}</small></span>
+        <div class="sync-actions">
+          <a href="${CONFIG.providerAdminUrls[provider]}" target="_blank" rel="noopener noreferrer">Abrir ${item.name}</a>
+          ${item.status === "verified" ? "" : `<button type="button" data-sync-provider="${provider}">Marcar ${item.name} verificado</button>`}
+        </div>
+      </div>`;
+    }).join("")}
+    <p class="sync-note">Airbnb y Booking revisan iCal en sus propios plazos. El estado solo cambia a verificado después de una revisión manual.</p>
+  </section>`;
+}
+
+function bindExternalSyncActions(pop, r){
+  const retry = pop.querySelector("[data-sync-retry]");
+  if (retry) retry.addEventListener("click", async () => {
+    retry.disabled = true;
+    await verifyFeedPublication(r.availability_version);
+    pop.hidden = true;
+  });
+  pop.querySelectorAll("[data-sync-provider]").forEach(button => {
+    button.addEventListener("click", async () => {
+      const provider = button.dataset.syncProvider;
+      const name = sourceInfo(provider).name;
+      if (!confirm(`¿Confirmas que revisaste ${name} y las fechas están bloqueadas correctamente?`)) return;
+      try{
+        button.disabled = true;
+        await state.store.markVerified(r.availability_version, provider);
+        await load();
+        pop.hidden = true;
+      }catch(err){
+        button.disabled = false;
+        alert(`No se pudo marcar ${name}: ${err.message}`);
+      }
+    });
+  });
 }
 
 // ---------- Detalle de reserva / bloqueo externo --------------------
@@ -661,12 +869,14 @@ function openPopover(r, anchor){
     <div class="prow"><span>Llegada</span><b>${r.start_date}</b></div>
     <div class="prow"><span>Salida</span><b>${r.end_date}</b></div>
     ${r.note ? `<div class="prow"><span>Nota</span><b>${escapeHtml(r.note)}</b></div>` : ""}
+    ${renderExternalSync(r)}
     ${canModify ? `<div class="pactions">
       <button class="pedit">Editar</button>
       <button class="pdel">Eliminar</button>
     </div>` : ""}`;
   pop.hidden = false;
   positionPopover(pop, anchor);
+  bindExternalSyncActions(pop, r);
   if (!canModify) return;
   pop.querySelector(".pedit").addEventListener("click", () => {
     pop.hidden = true;
@@ -688,9 +898,11 @@ function positionPopover(pop, anchor){
   const r = anchor.getBoundingClientRect();
   let left = r.left;
   let top = r.bottom + 6;
-  const pw = 240;
+  const popRect = pop.getBoundingClientRect();
+  const pw = popRect.width;
+  const ph = popRect.height;
   if (left + pw > window.innerWidth - 8) left = window.innerWidth - pw - 8;
-  if (top + 180 > window.innerHeight - 8) top = r.top - 186;
+  if (top + ph > window.innerHeight - 8) top = Math.max(8, r.top - ph - 6);
   pop.style.left = Math.max(8, left) + "px";
   pop.style.top = Math.max(8, top) + "px";
 }
