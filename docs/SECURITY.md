@@ -28,5 +28,7 @@ Mostrar 30 días consecutivos, incluso cuando cruzan al mes siguiente, es una
 proyección local de datos ya autorizados. No amplía los feeds, no revela campos
 nuevos y conserva las restricciones de reserva y el margen de Airbnb. Marcar el
 día 1 en dorado, sin tintes por mes, es únicamente una decisión de presentación.
+Las horas fijas de check-in y check-out se añaden localmente a la vista; no provienen
+de los feeds, no amplían sus campos ni revelan identidad o notas de las reservas.
 
 Reporta un incidente a los administradores del departamento; evita pegar información sensible en tickets o conversaciones.

@@ -40,9 +40,11 @@ const CONFIG = {
   airbnbMarginDays: 4,   // primer día reservable = hoy + N (margen Airbnb)
 };
 
-const VERSION = "26";  // marca visible (pestaña + badge) para detectar si hay caché
+const VERSION = "27";  // marca visible (pestaña + badge) para detectar si hay caché
 const MON_SHORT = ["ene","feb","mar","abr","may","jun","jul","ago","sep","oct","nov","dic"];
 const WD = ["Lun","Mar","Mié","Jue","Vie","Sáb","Dom"];
+const CHECKIN_TIME = "15:00";
+const CHECKOUT_TIME = "12:00";
 const LS_KEY = "chillan-reservations";
 const LS_LOCK = "chillan-lock-enabled";   // "true" = pedir clave al cargar, "false" = no
 const MAX_DATE = `${CONFIG.yearMax}-12-31`;   // tope de fechas reservables
@@ -105,6 +107,21 @@ function rollingMonthWindow(startIso, days=CONFIG.rollingDays){
     endExclusive: addDays(startIso, days),
     endInclusive: dates[dates.length - 1],
     dates,
+  };
+}
+
+function reservationVisibleOnDate(reservation, dateIso){
+  return reservation.start_date <= dateIso && reservation.end_date >= dateIso;
+}
+
+function reservationTimingForDate(reservation, dateIso){
+  const isStart = reservation.start_date === dateIso;
+  const isEnd = reservation.end_date === dateIso;
+  return {
+    isStart,
+    isEnd,
+    label: isStart ? "Check-in" : isEnd ? "Check-out" : "Reserva",
+    time: isStart ? CHECKIN_TIME : isEnd ? CHECKOUT_TIME : null,
   };
 }
 
@@ -443,16 +460,17 @@ function renderGrid(){
     cell.appendChild(num);
 
     const familyItems = state.reservations
-      .filter(r => r.start_date <= dateStr && r.end_date > dateStr)
+      .filter(r => reservationVisibleOnDate(r, dateStr))
       .map(r => ({ ...r, kind:"family" }));
     const externalItems = state.externalEvents
-      .filter(r => r.start_date <= dateStr && r.end_date > dateStr)
+      .filter(r => reservationVisibleOnDate(r, dateStr))
       .map(r => ({ ...r, id:`${r.source}:${r.external_uid}`, kind:"external" }));
     const dayItems = [...familyItems, ...externalItems].sort((a,b) => {
       if (a.kind !== b.kind) return a.kind === "family" ? -1 : 1;
       if (a.kind === "family") return famIdx(a.family_id) - famIdx(b.family_id);
       return a.source.localeCompare(b.source);
     });
+    if (dayItems.length) cell.classList.add(`lanes-${Math.min(dayItems.length, CONFIG.maxLanes)}`);
 
     const segs = document.createElement("div");
     segs.className = "segments";
@@ -460,18 +478,28 @@ function renderGrid(){
       const f = r.kind === "external"
         ? sourceInfo(r.source)
         : (fam(r.family_id) || { name:"?", color:"#888" });
-      const isStart = r.start_date === dateStr;
-      const isEnd = addDays(r.end_date, -1) === dateStr;
+      const timing = reservationTimingForDate(r, dateStr);
+      const { isStart, isEnd } = timing;
       const cls = ["seg", isStart && "start", isEnd && "end",
                    (isStart && isEnd) && "pill", r.kind === "external" && "external"].filter(Boolean).join(" ");
       const seg = document.createElement("div");
       seg.className = cls;
       seg.style.background = f.color;
-      seg.textContent = (isStart || isEnd) ? f.name : "";
+      const kind = document.createElement("span");
+      kind.className = "seg-kind";
+      kind.textContent = timing.label;
+      seg.appendChild(kind);
+      if (timing.time){
+        const time = document.createElement("span");
+        time.className = "seg-time";
+        time.textContent = timing.time;
+        seg.appendChild(time);
+      }
+      seg.setAttribute("aria-label", `${f.name}: ${timing.label}${timing.time ? ` ${timing.time}` : " en curso"}`);
       seg.dataset.id = r.id;
       seg.title = r.kind === "external"
-        ? `${f.name} · ${r.start_date} → ${r.end_date}`
-        : `${f.name} · ${r.start_date} → ${r.end_date}${r.note ? " · " + r.note : ""}`;
+        ? `${f.name} · ${r.start_date} ${CHECKIN_TIME} → ${r.end_date} ${CHECKOUT_TIME}`
+        : `${f.name} · ${r.start_date} ${CHECKIN_TIME} → ${r.end_date} ${CHECKOUT_TIME}${r.note ? " · " + r.note : ""}`;
       seg.addEventListener("click", e => { e.stopPropagation(); openPopover(r, seg); });
       segs.appendChild(seg);
     });
@@ -577,9 +605,9 @@ function updateHintBar(){
   if (state.loadError) txt = "⚠️ No se pudieron cargar las reservas: " + state.loadError;
   else if (state.selectionError) txt = `⚠️ ${state.selectionError}`;
   else if (!b.families.length) txt = "👆 Elige una familia arriba para empezar a reservar";
-  else if (!b.start) txt = "Toca el día de LLEGADA";
-  else if (!b.end) txt = "Toca el día de SALIDA · esa fecha quedará libre";
-  else txt = `Llegada ${pretty(b.start)} → Salida ${pretty(b.end)} · toca Confirmar`;
+  else if (!b.start) txt = `Toca el día de CHECK-IN · ${CHECKIN_TIME}`;
+  else if (!b.end) txt = `Toca el día de CHECK-OUT · ${CHECKOUT_TIME} · esa fecha quedará libre`;
+  else txt = `Check-in ${pretty(b.start)} ${CHECKIN_TIME} → Check-out ${pretty(b.end)} ${CHECKOUT_TIME} · toca Confirmar`;
   el.textContent = txt;
   el.classList.toggle("active", b.families.length > 0 && !state.loadError);
 }
@@ -589,8 +617,8 @@ function updateBrushBar(){
   if (!b.start){ bar.classList.remove("show"); return; }
   bar.classList.add("show");
   const range = b.end
-    ? `Llegada ${pretty(b.start)} → Salida ${pretty(b.end)}`
-    : `Llegada ${pretty(b.start)} · elige salida`;
+    ? `Check-in ${pretty(b.start)} ${CHECKIN_TIME} → Check-out ${pretty(b.end)} ${CHECKOUT_TIME}`
+    : `Check-in ${pretty(b.start)} ${CHECKIN_TIME} · elige check-out`;
   const n = b.end ? daysBetween(b.start, b.end) : 0;
   bar.querySelector(".bb-fam").textContent = b.families.length === 1
     ? (fam(b.families[0])?.name || "")
@@ -889,8 +917,8 @@ function openPopover(r, anchor){
     const source = sourceInfo(r.source);
     pop.innerHTML = `
       <div class="ptitle"><span class="dot" style="display:inline-block;background:${source.color};margin-right:6px"></span>${source.name}</div>
-      <div class="prow"><span>Llegada</span><b>${r.start_date}</b></div>
-      <div class="prow"><span>Salida</span><b>${r.end_date}</b></div>`;
+      <div class="prow"><span>Check-in</span><b>${escapeHtml(pretty(r.start_date))} ${CHECKIN_TIME}</b></div>
+      <div class="prow"><span>Check-out</span><b>${escapeHtml(pretty(r.end_date))} ${CHECKOUT_TIME}</b></div>`;
     pop.hidden = false;
     positionPopover(pop, anchor);
     return;
@@ -899,8 +927,8 @@ function openPopover(r, anchor){
   const canModify = !f.adminOnly || state.admin;
   pop.innerHTML = `
     <div class="ptitle"><span class="dot" style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${f.color};margin-right:6px"></span>${f.name}</div>
-    <div class="prow"><span>Llegada</span><b>${r.start_date}</b></div>
-    <div class="prow"><span>Salida</span><b>${r.end_date}</b></div>
+    <div class="prow"><span>Check-in</span><b>${escapeHtml(pretty(r.start_date))} ${CHECKIN_TIME}</b></div>
+    <div class="prow"><span>Check-out</span><b>${escapeHtml(pretty(r.end_date))} ${CHECKOUT_TIME}</b></div>
     ${r.note ? `<div class="prow"><span>Nota</span><b>${escapeHtml(r.note)}</b></div>` : ""}
     ${renderExternalSync(r)}
     ${canModify ? `<div class="pactions">
@@ -1166,7 +1194,11 @@ if (typeof document !== "undefined") main();
 
 if (typeof module !== "undefined" && module.exports){
   module.exports = {
+    CHECKIN_TIME,
+    CHECKOUT_TIME,
     reconcileRollingView,
+    reservationTimingForDate,
+    reservationVisibleOnDate,
     rollingMonthWindow,
   };
 }

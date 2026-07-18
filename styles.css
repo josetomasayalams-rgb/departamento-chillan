@@ -188,12 +188,13 @@ input[type=date].glass::-webkit-calendar-picker-indicator{ filter:invert(1) opac
 
 .segments{ position:absolute; left:4px; right:4px; top:26px; display:flex; flex-direction:column; gap:3px; pointer-events:none; }
 .seg{
-  height:clamp(13px, 1.4vw, 18px); border-radius:0; display:flex; align-items:center; padding:0 6px;
+  height:clamp(13px, 1.4vw, 18px); border-radius:0; display:flex; align-items:center; gap:4px; padding:0 6px;
   font-size:clamp(9.5px, 1.05vw, 12px); font-weight:600; color:#fff; white-space:nowrap; overflow:hidden;
   pointer-events:auto; cursor:pointer;
   text-shadow:0 1px 1px rgba(0,0,0,.35);
   box-shadow:0 1px 3px rgba(0,0,0,.25);
 }
+.seg-kind, .seg-time{ display:block; min-width:0; }
 .seg.start{ border-top-left-radius:7px; border-bottom-left-radius:7px; }
 .seg.end{ border-top-right-radius:7px; border-bottom-right-radius:7px; }
 .seg.pill{ border-radius:7px; }
@@ -541,8 +542,16 @@ body.locked .app{
   .weekdays, .grid{ gap:3px; }
   .weekdays div{ padding:4px 0; }
   .cell{ min-height:72px; padding:5px 4px 15px; border-radius:9px; }
-  .segments{ top:22px; left:3px; right:3px; gap:2px; }
-  .seg{ height:10px; }
+  .segments{ top:22px; left:3px; right:3px; gap:3px; }
+  .cell.lanes-1{ min-height:92px; }
+  .cell.lanes-2{ min-height:118px; }
+  .cell.lanes-3{ min-height:146px; }
+  .seg{
+    height:27px; min-height:27px; padding:1px 0; gap:0;
+    flex-direction:column; justify-content:center; line-height:1; white-space:normal;
+  }
+  .seg-kind{ width:100%; text-align:center; font-size:clamp(6px, 1.65vw, 7px); line-height:1; overflow:visible; text-overflow:clip; }
+  .seg-time{ width:100%; text-align:center; font-size:9px; line-height:1.05; }
   .brush-bar{
     left:50%; width:calc(100vw - 16px); bottom:calc(8px + env(safe-area-inset-bottom));
     transform:translate(-50%,170%); padding:10px 12px; border-radius:18px;

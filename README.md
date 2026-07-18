@@ -15,6 +15,10 @@ La vista principal comienza hoy y muestra 30 días consecutivos, aunque el rango
 cruce al mes siguiente. El inicio del mes siguiente se indica solamente con el
 día 1 marcado en dorado, sin franjas ni tintes adicionales. Se desplaza automáticamente cada día. Las
 flechas recorren periodos de 30 días y `Desde hoy` reactiva el seguimiento.
+Cada reserva familiar, de Airbnb o de Booking muestra `Check-in 15:00` en su
+llegada, `Reserva` durante la estadía y `Check-out 12:00` en la fecha real de
+salida. El check-out se muestra como información, pero esa fecha sigue libre para
+un nuevo check-in.
 
 Todas las reservas usan la convencion hotelera `[llegada, salida)`. Una reserva
 del 20 al 24 ocupa las noches 20, 21, 22 y 23; el dia 24 queda libre para otra

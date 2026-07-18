@@ -20,6 +20,9 @@ vez por minuto mientras la pestaña está abierta. Son 30 fechas consecutivas en
 estado de presentación; no se añadió una dependencia de calendario ni un nuevo
 modelo persistente. El cruce de mes se representa con una clase visual en el día 1,
 sin capa ni dependencia nueva.
+Las etiquetas `Check-in 15:00`, `Reserva` y `Check-out 12:00` también se derivan
+en el cliente. Mostrar la fecha exclusiva de salida es una proyección informativa;
+no cambia el modelo `[llegada, salida)` ni requiere dependencias o datos nuevos.
 
 El Linktree consume `/public-availability` con `fetch` y `cache: no-store`.
 Ese contrato consulta todos los grupos familiares, Airbnb y Booking, pero
