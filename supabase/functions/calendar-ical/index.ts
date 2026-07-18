@@ -4,26 +4,41 @@ import {
   type CalendarSource,
   parseExternalCalendar,
 } from "./ical.ts";
+import {
+  type AvailabilityPayload,
+  type AvailabilityRangeInput,
+  type AvailabilitySyncInput,
+  type AvailabilityWindow,
+  availabilityWindow,
+  buildAvailabilityPayload,
+} from "./availability.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") || "";
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
 const SYNC_SECRET = Deno.env.get("SYNC_SECRET") || "";
 const MAX_ICAL_BYTES = 5 * 1024 * 1024;
 
-const corsHeaders = {
+export const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "content-type, x-sync-secret",
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
 };
 
+const publicResponseHeaders = {
+  ...corsHeaders,
+  "Cache-Control": "no-store, max-age=0",
+  "Referrer-Policy": "no-referrer",
+  "X-Content-Type-Options": "nosniff",
+};
+
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { ...corsHeaders, "Content-Type": "application/json; charset=utf-8" },
+    headers: { ...publicResponseHeaders, "Content-Type": "application/json; charset=utf-8" },
   });
 }
 
-function safeError(error: unknown): string {
+export function safeError(error: unknown): string {
   const message = error instanceof Error
     ? error.message
     : error && typeof error === "object" && "message" in error
@@ -33,6 +48,63 @@ function safeError(error: unknown): string {
     .replace(/https?:\/\/\S+/gi, "[url]")
     .replace(/[\r\n]+/g, " ")
     .slice(0, 240);
+}
+
+export interface AvailabilityData {
+  reservations: AvailabilityRangeInput[];
+  externalEvents: AvailabilityRangeInput[];
+  syncStatus: AvailabilitySyncInput[];
+}
+
+export interface HandlerDependencies {
+  now?: () => Date;
+  loadAvailability?: (window: AvailabilityWindow) => Promise<AvailabilityData>;
+}
+
+async function loadAvailability(window: AvailabilityWindow): Promise<AvailabilityData> {
+  const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+  const [reservations, externalEvents, syncStatus] = await Promise.all([
+    supabase.from("reservations")
+      .select("start_date,end_date")
+      .lt("start_date", window.to)
+      .gt("end_date", window.from)
+      .order("start_date"),
+    supabase.from("external_calendar_events")
+      .select("start_date,end_date")
+      .lt("start_date", window.to)
+      .gt("end_date", window.from)
+      .order("start_date"),
+    supabase.from("calendar_sync_status")
+      .select("source,status,last_success_at")
+      .order("source"),
+  ]);
+  if (reservations.error || externalEvents.error || syncStatus.error) {
+    throw reservations.error || externalEvents.error || syncStatus.error;
+  }
+  return {
+    reservations: (reservations.data || []) as AvailabilityRangeInput[],
+    externalEvents: (externalEvents.data || []) as AvailabilityRangeInput[],
+    syncStatus: (syncStatus.data || []) as AvailabilitySyncInput[],
+  };
+}
+
+async function serveAvailability(dependencies: HandlerDependencies): Promise<Response> {
+  const now = dependencies.now?.() ?? new Date();
+  const window = availabilityWindow(now);
+  try {
+    const data = await (dependencies.loadAvailability ?? loadAvailability)(window);
+    const payload: AvailabilityPayload = buildAvailabilityPayload({ ...data, now });
+    return jsonResponse(payload);
+  } catch (error) {
+    console.error("public-availability-query", safeError(error));
+    return jsonResponse({
+      version: 1,
+      status: "unavailable",
+      error: "Disponibilidad temporalmente no disponible",
+    }, 503);
+  }
 }
 
 async function fetchCalendar(url: string): Promise<string> {
@@ -125,10 +197,17 @@ async function syncCalendars(): Promise<Response> {
   return jsonResponse({ ok: allOk, sources: results }, allOk ? 200 : 207);
 }
 
-Deno.serve(async (request) => {
+export async function handleRequest(
+  request: Request,
+  dependencies: HandlerDependencies = {},
+): Promise<Response> {
   if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders });
 
   const path = new URL(request.url).pathname.replace(/\/+$/, "");
+  if (request.method === "GET" && path.endsWith("/availability")) {
+    return await serveAvailability(dependencies);
+  }
+
   if (request.method === "GET" && path.endsWith("/calendario-familiar.ics")) {
     return await serveFamilyFeed();
   }
@@ -142,4 +221,6 @@ Deno.serve(async (request) => {
   }
 
   return jsonResponse({ error: "Ruta no encontrada" }, 404);
-});
+}
+
+if (import.meta.main) Deno.serve((request) => handleRequest(request));

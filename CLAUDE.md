@@ -4,18 +4,22 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-A shared reservation calendar for a family apartment in Chillán, Chile. Vanilla JS — **no framework, no build step, no package.json, no tests, no linter**. The UI is Spanish (`lang="es"`), week starts Monday, five families each with a fixed color.
+A shared reservation calendar for a family apartment in Chillán, Chile. Vanilla JS — **no framework, no build step, and no package.json**. Dependency-free Node checks and Deno tests provide the repository verification harness. The UI is Spanish (`lang="es"`), week starts Monday, five families each with a fixed color.
 
 Do not add a build pipeline, bundler, or test framework unless asked. The "no build" property is intentional.
+
+`AGENTS.md` is the canonical orientation map. Use `ARCHITECTURE.md` and `docs/architecture/LAYERS.md` for current boundaries instead of duplicating new rules here.
 
 ## Run / deploy
 
 ```bash
-cd "PLATAFORMAS CHILLAN"
+cd "PLATAFORMAS CHILLAN/Reservas familiares"
 python3 -m http.server 8000   # open http://localhost:8000 (http, NOT file://)
+make ci
+make gc
 ```
 
-`file://` breaks the dynamic ES-module Supabase import and relative paths — always serve over http. Deploy by dragging the folder into Netlify Drop, or `npx vercel`. The `assets/chillan-bg.jpg` background must ship with it.
+`file://` breaks the dynamic ES-module Supabase import and relative paths — always serve over http. The deployed artifact is the static directory described in `docs/guides/DEPLOYMENT.md`; `assets/chillan-bg.jpg` must ship with it.
 
 ## Architecture
 
@@ -26,7 +30,7 @@ The one thing that spans files and isn't obvious from a single read: **the stora
 - Live mode loads Supabase lazily via `await import("https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm")` — only fetched when keys are present, so local mode stays dependency-free.
 - Realtime: live mode uses a Supabase `postgres_changes` channel; local mode uses the `storage` event for cross-tab sync. Both call `load()` on change.
 
-**Data model** (`schema.sql`): one `reservations` table — `id` (uuid), `family_id` (text), `start_date`, `end_date` (date, `end >= start` constraint), `note`, `created_at`. RLS is open (`public read`/`public write`) because the anon key is public by design; security relies on the Supabase URL staying within the family. **One selected date-range can pick multiple families** — `saveReservation()` inserts one row *per family*, all sharing dates and note.
+**Primary data model** (`schema.sql`): `reservations` — `id` (uuid), `family_id` (text), `start_date`, `end_date` (date, `end >= start` constraint), `note`, `created_at`. The migrations add the external-calendar and synchronization tables. The public client credentials are not an authorization boundary; the current policy assumes a trusted family group, as documented in `docs/SECURITY.md`. **One selected date-range can pick multiple families** — `saveReservation()` inserts one row *per family*, all sharing dates and note.
 
 **Render model**: `render()` fully rebuilds `#grid` every time on any data/view change (cheap; it's one month). Each cell filters `reservations` to those overlapping that day, sorts by family index for stable lane order, and draws `.seg` bars with `.start`/`.end`/`.pill` classes depending on whether the day is the segment's first/last/both. `CONFIG.maxLanes` caps visible bars per cell, then shows `+N`.
 
