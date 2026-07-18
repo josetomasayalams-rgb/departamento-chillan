@@ -27,3 +27,5 @@ Las reservas de otros grupos familiares no cruzan esta frontera. Ninguno de los
 dos contratos publica fuente, grupo, huésped, UID, notas ni URLs; Operaciones
 solo recibe fechas y un identificador opaco estable, derivado mediante HMAC, para
 representar cada estadía como “Reserva” y detectar cambios sin conocer su origen.
+Las estadías individuales conservan su check-in original mientras estén activas;
+el recorte a la ventana se aplica únicamente a los rangos compactos de bloqueo.

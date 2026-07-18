@@ -59,6 +59,19 @@ Deno.test("reserved ranges expose stable opaque identities and remove identity d
   assertFalse(JSON.stringify(ranges).includes("private"));
 });
 
+Deno.test("reserved ranges preserve the original check-in for an active stay", async () => {
+  const ranges = await normalizeReservedRanges([{
+    identity: "external:active",
+    start_date: "2026-07-16",
+    end_date: "2026-07-18",
+  }], WINDOW, IDENTITY_SECRET);
+  assertEquals(ranges, [{
+    reservationId: await publicReservationId("external:active", IDENTITY_SECRET),
+    startDate: "2026-07-16",
+    endDate: "2026-07-18",
+  }]);
+});
+
 Deno.test("availability unifies family, Airbnb and Booking without source details", async () => {
   const payload = await buildAvailabilityPayload({
     reservations: [{ identity: "family:a", start_date: "2026-07-20", end_date: "2026-07-22" }],
