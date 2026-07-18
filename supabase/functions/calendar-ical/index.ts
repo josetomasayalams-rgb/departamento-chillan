@@ -18,6 +18,7 @@ const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
 const AVAILABILITY_ID_SECRET = Deno.env.get("AVAILABILITY_ID_SECRET") || SERVICE_ROLE_KEY;
 const SYNC_SECRET = Deno.env.get("SYNC_SECRET") || "";
 const MAX_ICAL_BYTES = 5 * 1024 * 1024;
+export const OPERATIONS_RESERVATION_FAMILY_ID = "particular";
 
 export const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -63,13 +64,31 @@ export interface HandlerDependencies {
   loadAvailability?: (window: AvailabilityWindow) => Promise<AvailabilityData>;
 }
 
+export function mapParticularReservations(rows: Array<{
+  id: string;
+  family_id: string;
+  start_date: string;
+  end_date: string;
+}>): AvailabilityRangeInput[] {
+  return rows
+    .filter((row) => row.family_id === OPERATIONS_RESERVATION_FAMILY_ID)
+    .map((row) => ({
+      // Se conserva el prefijo histórico para que la identidad pública HMAC
+      // no cambie y Operaciones no duplique reservas ya conocidas.
+      identity: `family:${row.id}`,
+      start_date: row.start_date,
+      end_date: row.end_date,
+    }));
+}
+
 async function loadAvailability(window: AvailabilityWindow): Promise<AvailabilityData> {
   const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
   const [reservations, externalEvents, syncStatus] = await Promise.all([
     supabase.from("reservations")
-      .select("id,start_date,end_date")
+      .select("id,family_id,start_date,end_date")
+      .eq("family_id", OPERATIONS_RESERVATION_FAMILY_ID)
       .lt("start_date", window.to)
       .gt("end_date", window.from)
       .order("start_date"),
@@ -86,11 +105,7 @@ async function loadAvailability(window: AvailabilityWindow): Promise<Availabilit
     throw reservations.error || externalEvents.error || syncStatus.error;
   }
   return {
-    reservations: (reservations.data || []).map((row) => ({
-      identity: `family:${row.id}`,
-      start_date: row.start_date,
-      end_date: row.end_date,
-    })) as AvailabilityRangeInput[],
+    reservations: mapParticularReservations(reservations.data || []),
     externalEvents: (externalEvents.data || []).map((row) => ({
       identity: `external:${row.source}:${row.external_uid}`,
       start_date: row.start_date,
