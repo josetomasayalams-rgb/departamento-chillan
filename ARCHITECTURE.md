@@ -20,6 +20,12 @@ reservations(family_id=particular) + external_calendar_events → /availability 
 reservations(todas) + external_calendar_events → /public-availability → Linktree (solo ocupado/libre)
 ```
 
+La PWA proyecta reservas y bloqueos sobre una ventana móvil de 31 fechas
+consecutivas. `state.view.start` controla el inicio y `followsToday` permite que
+la vista avance con la fecha local; navegar manualmente pausa ese seguimiento
+hasta usar `Desde hoy`. El margen de Airbnb se recalcula en la misma reconciliación
+diaria. Esta proyección no modifica reservas ni eventos externos.
+
 Las reglas de dependencia y su verificación mecánica están en `docs/architecture/LAYERS.md`. El contrato de datos vive en `schema.sql` y las migraciones son la evolución canónica del esquema.
 
 La disponibilidad pública ofrece las reservas particulares y estadías externas

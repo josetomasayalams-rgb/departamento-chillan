@@ -78,6 +78,12 @@ body::before{ /* velo para legibilidad */
 .title .subtitle{ margin:2px 0 0; color:var(--text-dim); font-size:13px; }
 
 .nav{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+.range-label{
+  min-width:190px; display:inline-flex; align-items:center; justify-content:center;
+  padding:8px 14px; border-radius:999px; color:var(--text); font-size:14px;
+  font-weight:700; font-variant-numeric:tabular-nums;
+}
+.range-label.following-today::before{ content:"●"; margin-right:7px; color:#7CFFB2; font-size:9px; }
 .btn{
   border:1px solid var(--glass-brd); background:var(--glass-bg); color:var(--text);
   -webkit-backdrop-filter:blur(12px) saturate(160%); backdrop-filter:blur(12px) saturate(160%);
@@ -174,7 +180,8 @@ input[type=date].glass::-webkit-calendar-picker-indicator{ filter:invert(1) opac
 }
 .cell:hover{ background:rgba(255,255,255,.12); }
 .cell.blank{ background:transparent; border-color:transparent; cursor:default; }
-.cell .num{ font-size:13px; font-weight:600; opacity:.92; }
+.cell .num{ display:flex; align-items:baseline; gap:3px; font-size:13px; font-weight:600; opacity:.92; }
+.month-marker{ font-size:8px; font-weight:800; letter-spacing:.03em; text-transform:uppercase; color:var(--text-dim); }
 .cell.today{ box-shadow:0 0 0 2px #fff inset, 0 0 18px rgba(255,255,255,.35); }
 
 .segments{ position:absolute; left:4px; right:4px; top:26px; display:flex; flex-direction:column; gap:3px; pointer-events:none; }
@@ -516,13 +523,11 @@ body.locked .app{
     gap:7px; margin-top:12px; width:100%;
   }
   .nav #prev{ grid-column:1; grid-row:1; }
-  .nav #month{ grid-column:2; grid-row:1; }
-  .nav #year{ grid-column:3; grid-row:1; }
+  .nav #range-label{ grid-column:2 / span 2; grid-row:1; width:100%; min-width:0; padding-inline:6px; font-size:12px; }
   .nav #next{ grid-column:4; grid-row:1; }
   .nav #today{ grid-column:1 / span 2; grid-row:2; width:100%; }
   .nav #add{ grid-column:3 / span 2; grid-row:2; width:100%; }
   .nav #undo{ grid-column:1 / -1; grid-row:3; width:100%; }
-  .nav select.glass{ min-width:0; width:100%; padding:8px 7px; }
   .fam-picker{ align-items:stretch; gap:6px; margin:0 0 10px; padding:0; }
   .fam-select, .fs-trigger{ width:100%; min-width:0; }
   .fs-menu{ width:100%; min-width:0; }
