@@ -27,8 +27,8 @@ Deno.test("public availability route returns a sanitized contract and security h
   assertEquals(response.headers.get("x-content-type-options"), "nosniff");
   const body = await response.text();
   assertStringIncludes(body, '"status":"live"');
+  assertStringIncludes(body, '"reservedRanges"');
   assertStringIncludes(body, '"blockedRanges"');
-  assertFalse(body.includes('"reservedRanges"'));
   for (const privateTerm of ["uid", "note", "guest", "family_id", "external_uid"]) {
     assertFalse(body.toLowerCase().includes(privateTerm));
   }
