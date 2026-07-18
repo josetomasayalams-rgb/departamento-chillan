@@ -16,7 +16,7 @@ La lista individual preserva fechas originales; sólo la vista compacta de
 bloqueos se recorta al horizonte de disponibilidad.
 
 El rango visible se deriva con funciones nativas de fecha y se reconcilia una
-vez por minuto mientras la pestaña está abierta. Son 31 fechas consecutivas en
+vez por minuto mientras la pestaña está abierta. Son 30 fechas consecutivas en
 estado de presentación; no se añadió una dependencia de calendario ni un nuevo
 modelo persistente.
 

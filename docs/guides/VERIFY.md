@@ -2,9 +2,9 @@
 
 Ejecuta `make ci` para validar sintaxis, el contrato estático y las fronteras arquitectónicas. Ejecuta `make gc` para detectar deriva documental y de arquitectura.
 
-En el cliente, confirma que la grilla exponga exactamente 31 fechas consecutivas
-desde hoy, cruce correctamente al mes siguiente y muestre el rango en el encabezado.
-Las flechas deben mover periodos de 31 días; `Desde hoy` debe restaurar el rango
+En el cliente, confirma que la grilla exponga exactamente 30 fechas consecutivas
+desde hoy, muestre la franja proporcional por mes, resalte el día 1 y comunique el rango.
+Las flechas deben mover periodos de 30 días; `Desde hoy` debe restaurar el rango
 vigente y el seguimiento diario. Verifica que el margen de Airbnb siga bloqueando
 las fechas correspondientes después del cambio de día.
 
