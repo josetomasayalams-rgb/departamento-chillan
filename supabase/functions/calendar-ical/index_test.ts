@@ -3,10 +3,26 @@ import {
   assertFalse,
   assertStringIncludes,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
-import { handleRequest, safeError } from "./index.ts";
+import {
+  handleRequest,
+  mapParticularReservations,
+  safeError,
+} from "./index.ts";
 
 const NOW = new Date("2026-07-17T15:00:00.000Z");
 const URL = "https://example.supabase.co/functions/v1/calendar-ical/availability";
+
+Deno.test("operations feed includes only particular reservations", () => {
+  assertEquals(mapParticularReservations([
+    { id: "particular-a", family_id: "particular", start_date: "2026-07-20", end_date: "2026-07-22" },
+    { id: "family-a", family_id: "papas", start_date: "2026-07-23", end_date: "2026-07-25" },
+    { id: "family-b", family_id: "quiroz-ayala", start_date: "2026-07-26", end_date: "2026-07-28" },
+  ]), [{
+    identity: "family:particular-a",
+    start_date: "2026-07-20",
+    end_date: "2026-07-22",
+  }]);
+});
 
 Deno.test("public availability route returns a sanitized contract and security headers", async () => {
   const response = await handleRequest(new Request(URL), {
