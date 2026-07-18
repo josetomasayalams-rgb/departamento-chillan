@@ -13,7 +13,7 @@ Adaptadores: localStorage | cliente Supabase
 
 Edge HTTP: supabase/functions/calendar-ical/index.ts
         ↓
-Dominio iCal: supabase/functions/calendar-ical/ical.ts
+Dominios puros: ical.ts | availability.ts
 ```
 
 ## Reglas
@@ -23,10 +23,15 @@ Dominio iCal: supabase/functions/calendar-ical/ical.ts
 | Presentación | Cliente mediante etiquetas HTML | Supabase ni almacenamiento directo |
 | Cliente | APIs web y cliente Supabase remoto | módulos locales nuevos o la Edge Function |
 | Puerto `state.store` | adaptador activo | DOM |
-| Edge HTTP | paquetes Deno, `ical.ts`, Supabase | código de la PWA |
+| Edge HTTP | paquetes Deno, `ical.ts`, `availability.ts`, Supabase | código de la PWA |
 | Dominio iCal | paquetes Deno | HTTP, DOM o Supabase |
+| Dominio de disponibilidad | APIs estándar de JavaScript | HTTP, DOM, Supabase o paquetes externos |
 
 El test `tests/architecture/boundary.test.mjs` verifica los imports de las capas ejecutables. No hay violaciones base; `known-violations.json` debe permanecer vacío.
+
+`/availability` es la frontera compartida con Operaciones. Solo publica fechas
+y frescura; la plataforma consumidora no consulta las tablas de reservas ni
+los calendarios externos directamente.
 
 ## Remediación
 

@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 
 const docs = ["ARCHITECTURE.md", "docs/architecture/LAYERS.md", "docs/SECURITY.md", "docs/STACK.md"];
-const source = ["app.js", "schema.sql", "supabase/functions/calendar-ical/index.ts", "supabase/functions/calendar-ical/ical.ts"];
+const source = ["app.js", "schema.sql", "supabase/functions/calendar-ical/index.ts", "supabase/functions/calendar-ical/ical.ts", "supabase/functions/calendar-ical/availability.ts"];
 const failures = docs.filter((file) => !fs.existsSync(file)).map((file) => `Documentation drift: missing ${file}`);
 
 function lastChange(file) {

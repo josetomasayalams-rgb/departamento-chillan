@@ -36,7 +36,7 @@ make gc
 node --check app.js
 ```
 
-Para probar la Edge Function se requiere Deno: `npx -y deno test --allow-read --allow-env supabase/functions/calendar-ical/ical_test.ts`.
+Para probar la Edge Function se requiere Deno: `npx -y deno test --allow-read --allow-env supabase/functions/calendar-ical/`.
 
 ## Dónde empezar
 

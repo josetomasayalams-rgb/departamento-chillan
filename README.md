@@ -5,6 +5,7 @@ sincronizar disponibilidad con Airbnb y Booking mediante iCal.
 
 - Aplicacion: <https://josetomasayalams-rgb.github.io/departamento-chillan/>
 - Feed familiar: <https://uimqusoylxpyljbfqumm.supabase.co/functions/v1/calendar-ical/calendario-familiar.ics>
+- Disponibilidad pública sanitizada: <https://uimqusoylxpyljbfqumm.supabase.co/functions/v1/calendar-ical/availability>
 - Backend compartido: Supabase, proyecto `uimqusoylxpyljbfqumm`
 
 ## Comportamiento de fechas
@@ -31,6 +32,13 @@ validos. Un cron de Supabase ejecuta la sincronizacion cada 15 minutos.
 El feed familiar nunca consulta `external_calendar_events`, lo que evita volver
 a exportar bloqueos importados y formar ciclos.
 
+La ruta JSON `/availability` une reservas familiares y bloqueos externos dentro
+de un horizonte de 12 meses. Solo publica rangos ocupados consolidados y
+frescura agregada: no incluye fuente, UID, familia, notas, cantidades de
+reservas ni URLs iCal. Si una fuente nunca se ha sincronizado, responde
+`unavailable`; si conserva datos tras un error o supera 45 minutos sin éxito,
+responde `stale`.
+
 ## Desarrollo local
 
 La interfaz no tiene build, bundler ni dependencias locales:
@@ -46,7 +54,7 @@ Comprobaciones basicas:
 
 ```bash
 node --check app.js
-npx -y deno test --allow-read --allow-env supabase/functions/calendar-ical/ical_test.ts
+npx -y deno test --allow-read --allow-env supabase/functions/calendar-ical/
 ```
 
 ## Despliegue Supabase

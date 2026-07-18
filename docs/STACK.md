@@ -5,3 +5,6 @@
 - TypeScript en `supabase/functions/` se ejecuta con Deno/Supabase, no con Node.
 - El esquema inicial está en `schema.sql`; las migraciones son aditivas e idempotentes.
 - No se admiten dependencias locales sin justificar su beneficio frente a una PWA sin build.
+
+El Linktree consume el contrato HTTPS `/availability`; no accede a tablas,
+credenciales ni URLs iCal y no comparte código ejecutable con esta plataforma.

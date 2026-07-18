@@ -4,8 +4,9 @@ import test from "node:test";
 
 const RULES = {
   "app.js": { layer: "client", allowed: (value) => value.startsWith("https://") },
-  "supabase/functions/calendar-ical/index.ts": { layer: "edge-http", allowed: (value) => value.startsWith("npm:") || value === "./ical.ts" },
+  "supabase/functions/calendar-ical/index.ts": { layer: "edge-http", allowed: (value) => value.startsWith("npm:") || ["./ical.ts", "./availability.ts"].includes(value) },
   "supabase/functions/calendar-ical/ical.ts": { layer: "ical-domain", allowed: (value) => value.startsWith("npm:") },
+  "supabase/functions/calendar-ical/availability.ts": { layer: "availability-domain", allowed: () => false },
 };
 const IMPORT = /\b(?:from\s+|import\s*(?:\(\s*)?)(['"])([^'"]+)\1/g;
 const known = JSON.parse(fs.readFileSync(new URL("./known-violations.json", import.meta.url), "utf8"));

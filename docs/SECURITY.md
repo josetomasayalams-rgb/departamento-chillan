@@ -15,6 +15,7 @@ La PWA usa un cliente público de Supabase y está diseñada para un grupo famil
 | Riesgo | Control actual |
 | --- | --- |
 | Fuga de detalles familiares por iCal | El feed publica solo “No disponible” |
+| Inferencia de fuente o cantidad desde el Linktree | `/availability` compacta todas las estadías en rangos bloqueados sin identidad |
 | Fallo de un proveedor externo | La sincronización conserva el último conjunto válido |
 | HTML inyectado desde notas | La interfaz escapa texto antes de insertarlo |
 | Respuestas externas grandes | La función limita el tamaño del calendario |

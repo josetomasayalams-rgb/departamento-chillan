@@ -9,8 +9,9 @@ const app = fs.readFileSync("app.js", "utf8");
 if (!app.includes("initStore")) failures.push("app.js must retain initStore(): UI persistence must stay behind state.store.");
 const rules = {
   "app.js": (value) => value.startsWith("https://"),
-  "supabase/functions/calendar-ical/index.ts": (value) => value.startsWith("npm:") || value === "./ical.ts",
+  "supabase/functions/calendar-ical/index.ts": (value) => value.startsWith("npm:") || ["./ical.ts", "./availability.ts"].includes(value),
   "supabase/functions/calendar-ical/ical.ts": (value) => value.startsWith("npm:"),
+  "supabase/functions/calendar-ical/availability.ts": () => false,
 };
 const importPattern = /\b(?:from\s+|import\s*(?:\(\s*)?)(['"])([^'"]+)\1/g;
 for (const [file, allowed] of Object.entries(rules)) {
