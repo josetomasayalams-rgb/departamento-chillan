@@ -8,6 +8,7 @@ import {
   buildAvailabilityPayload,
   isValidIsoDate,
   mergeBlockedRanges,
+  normalizeReservedRanges,
   santiagoDate,
 } from "./availability.ts";
 
@@ -35,6 +36,17 @@ Deno.test("blocked ranges preserve exclusive checkout and merge overlaps and adj
   ], WINDOW), [{ startDate: "2026-07-17", endDate: "2026-07-24" }]);
 });
 
+Deno.test("reserved ranges preserve adjacent stays and remove exact duplicates", () => {
+  assertEquals(normalizeReservedRanges([
+    { start_date: "2026-07-20", end_date: "2026-07-22" },
+    { start_date: "2026-07-20", end_date: "2026-07-22" },
+    { start_date: "2026-07-22", end_date: "2026-07-24" },
+  ], WINDOW), [
+    { startDate: "2026-07-20", endDate: "2026-07-22" },
+    { startDate: "2026-07-22", endDate: "2026-07-24" },
+  ]);
+});
+
 Deno.test("availability unifies family, Airbnb and Booking without source details", () => {
   const payload = buildAvailabilityPayload({
     reservations: [{ start_date: "2026-07-20", end_date: "2026-07-22" }],
@@ -48,6 +60,11 @@ Deno.test("availability unifies family, Airbnb and Booking without source detail
 
   assertEquals(payload.status, "live");
   assertEquals(payload.lastSuccessfulSyncAt, "2026-07-17T14:50:00.000Z");
+  assertEquals(payload.reservedRanges, [
+    { startDate: "2026-07-20", endDate: "2026-07-22" },
+    { startDate: "2026-07-21", endDate: "2026-07-24" },
+    { startDate: "2026-08-01", endDate: "2026-08-03" },
+  ]);
   assertEquals(payload.blockedRanges, [
     { startDate: "2026-07-20", endDate: "2026-07-24" },
     { startDate: "2026-08-01", endDate: "2026-08-03" },

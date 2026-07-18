@@ -30,6 +30,7 @@ export interface AvailabilityPayload {
   range: AvailabilityWindow;
   status: "live" | "stale" | "unavailable";
   lastSuccessfulSyncAt: string | null;
+  reservedRanges: Array<{ startDate: string; endDate: string }>;
   blockedRanges: Array<{ startDate: string; endDate: string }>;
 }
 
@@ -84,10 +85,10 @@ export function availabilityWindow(now: Date): AvailabilityWindow {
   return { from, to: addMonthsClamped(from, AVAILABILITY_MONTHS), endExclusive: true };
 }
 
-function normalizeRanges(
+export function normalizeReservedRanges(
   ranges: readonly AvailabilityRangeInput[],
   window: AvailabilityWindow,
-): AvailabilityPayload["blockedRanges"] {
+): AvailabilityPayload["reservedRanges"] {
   const clipped = ranges.flatMap((range) => {
     if (!isValidIsoDate(range.start_date) || !isValidIsoDate(range.end_date)) return [];
     if (range.end_date <= range.start_date) return [];
@@ -109,7 +110,7 @@ export function mergeBlockedRanges(
   ranges: readonly AvailabilityRangeInput[],
   window: AvailabilityWindow,
 ): AvailabilityPayload["blockedRanges"] {
-  const normalized = normalizeRanges(ranges, window);
+  const normalized = normalizeReservedRanges(ranges, window);
 
   const merged: AvailabilityPayload["blockedRanges"] = [];
   for (const range of normalized) {
@@ -167,6 +168,7 @@ export function buildAvailabilityPayload(input: {
     generatedAt: input.now.toISOString(),
     range,
     ...freshness,
+    reservedRanges: normalizeReservedRanges(reservations, range),
     blockedRanges: mergeBlockedRanges(reservations, range),
   };
 }

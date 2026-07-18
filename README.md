@@ -33,9 +33,10 @@ El feed familiar nunca consulta `external_calendar_events`, lo que evita volver
 a exportar bloqueos importados y formar ciclos.
 
 La ruta JSON `/availability` une reservas familiares y bloqueos externos dentro
-de un horizonte de 12 meses. Solo publica rangos ocupados consolidados y
-frescura agregada: no incluye fuente, UID, familia, notas, cantidades de
-reservas ni URLs iCal. Si una fuente nunca se ha sincronizado, responde
+de un horizonte de 12 meses. Publica las estadías sanitizadas por separado en
+`reservedRanges` y los períodos ocupados consolidados en `blockedRanges`, además
+de frescura agregada. Operaciones consume solo `reservedRanges`; ningún rango
+incluye fuente, UID, familia, huésped, notas ni URLs iCal. Si una fuente nunca se ha sincronizado, responde
 `unavailable`; si conserva datos tras un error o supera 45 minutos sin éxito,
 responde `stale`.
 

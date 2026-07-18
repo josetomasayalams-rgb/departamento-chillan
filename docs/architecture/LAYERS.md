@@ -29,9 +29,10 @@ Dominios puros: ical.ts | availability.ts
 
 El test `tests/architecture/boundary.test.mjs` verifica los imports de las capas ejecutables. No hay violaciones base; `known-violations.json` debe permanecer vacío.
 
-`/availability` es la frontera compartida con Operaciones. Solo publica fechas
-y frescura; la plataforma consumidora no consulta las tablas de reservas ni
-los calendarios externos directamente.
+`/availability` es la frontera compartida con Operaciones. Publica
+`reservedRanges`, `blockedRanges` y frescura usando solo fechas; la plataforma
+consumidora no consulta las tablas de reservas ni los calendarios externos
+directamente.
 
 ## Remediación
 

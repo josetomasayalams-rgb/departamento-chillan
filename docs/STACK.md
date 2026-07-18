@@ -6,5 +6,6 @@
 - El esquema inicial está en `schema.sql`; las migraciones son aditivas e idempotentes.
 - No se admiten dependencias locales sin justificar su beneficio frente a una PWA sin build.
 
-El Linktree consume el contrato HTTPS `/availability`; no accede a tablas,
-credenciales ni URLs iCal y no comparte código ejecutable con esta plataforma.
+Operaciones consume el contrato HTTPS público `/availability` sin SDK adicional;
+no accede a tablas, credenciales ni URLs iCal y no comparte código ejecutable
+con esta plataforma.
