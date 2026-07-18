@@ -15,6 +15,7 @@ import {
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") || "";
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+const AVAILABILITY_ID_SECRET = Deno.env.get("AVAILABILITY_ID_SECRET") || SERVICE_ROLE_KEY;
 const SYNC_SECRET = Deno.env.get("SYNC_SECRET") || "";
 const MAX_ICAL_BYTES = 5 * 1024 * 1024;
 
@@ -58,6 +59,7 @@ export interface AvailabilityData {
 
 export interface HandlerDependencies {
   now?: () => Date;
+  identitySecret?: string;
   loadAvailability?: (window: AvailabilityWindow) => Promise<AvailabilityData>;
 }
 
@@ -67,12 +69,12 @@ async function loadAvailability(window: AvailabilityWindow): Promise<Availabilit
   });
   const [reservations, externalEvents, syncStatus] = await Promise.all([
     supabase.from("reservations")
-      .select("start_date,end_date")
+      .select("id,start_date,end_date")
       .lt("start_date", window.to)
       .gt("end_date", window.from)
       .order("start_date"),
     supabase.from("external_calendar_events")
-      .select("start_date,end_date")
+      .select("source,external_uid,start_date,end_date")
       .lt("start_date", window.to)
       .gt("end_date", window.from)
       .order("start_date"),
@@ -84,8 +86,16 @@ async function loadAvailability(window: AvailabilityWindow): Promise<Availabilit
     throw reservations.error || externalEvents.error || syncStatus.error;
   }
   return {
-    reservations: (reservations.data || []) as AvailabilityRangeInput[],
-    externalEvents: (externalEvents.data || []) as AvailabilityRangeInput[],
+    reservations: (reservations.data || []).map((row) => ({
+      identity: `family:${row.id}`,
+      start_date: row.start_date,
+      end_date: row.end_date,
+    })) as AvailabilityRangeInput[],
+    externalEvents: (externalEvents.data || []).map((row) => ({
+      identity: `external:${row.source}:${row.external_uid}`,
+      start_date: row.start_date,
+      end_date: row.end_date,
+    })) as AvailabilityRangeInput[],
     syncStatus: (syncStatus.data || []) as AvailabilitySyncInput[],
   };
 }
@@ -95,7 +105,8 @@ async function serveAvailability(dependencies: HandlerDependencies): Promise<Res
   const window = availabilityWindow(now);
   try {
     const data = await (dependencies.loadAvailability ?? loadAvailability)(window);
-    const payload: AvailabilityPayload = buildAvailabilityPayload({ ...data, now });
+    const identitySecret = dependencies.identitySecret || AVAILABILITY_ID_SECRET || "availability-test-only";
+    const payload: AvailabilityPayload = await buildAvailabilityPayload({ ...data, now, identitySecret });
     return jsonResponse(payload);
   } catch (error) {
     console.error("public-availability-query", safeError(error));

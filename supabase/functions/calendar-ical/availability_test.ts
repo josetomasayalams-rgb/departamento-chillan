@@ -9,10 +9,12 @@ import {
   isValidIsoDate,
   mergeBlockedRanges,
   normalizeReservedRanges,
+  publicReservationId,
   santiagoDate,
 } from "./availability.ts";
 
 const NOW = new Date("2026-07-17T15:00:00.000Z");
+const IDENTITY_SECRET = "test-identity-secret";
 const WINDOW = availabilityWindow(NOW);
 const LIVE_SYNC = [
   { source: "airbnb", status: "ok", last_success_at: "2026-07-17T14:50:00.000Z" },
@@ -29,41 +31,52 @@ Deno.test("availability uses Santiago civil dates and a 12-month exclusive range
 
 Deno.test("blocked ranges preserve exclusive checkout and merge overlaps and adjacency", () => {
   assertEquals(mergeBlockedRanges([
-    { start_date: "2026-07-16", end_date: "2026-07-18" },
-    { start_date: "2026-07-18", end_date: "2026-07-21" },
-    { start_date: "2026-07-20", end_date: "2026-07-24" },
-    { start_date: "2028-01-01", end_date: "2028-01-05" },
+    { identity: "one", start_date: "2026-07-16", end_date: "2026-07-18" },
+    { identity: "two", start_date: "2026-07-18", end_date: "2026-07-21" },
+    { identity: "three", start_date: "2026-07-20", end_date: "2026-07-24" },
+    { identity: "four", start_date: "2028-01-01", end_date: "2028-01-05" },
   ], WINDOW), [{ startDate: "2026-07-17", endDate: "2026-07-24" }]);
 });
 
-Deno.test("reserved ranges preserve adjacent stays and remove exact duplicates", () => {
-  assertEquals(normalizeReservedRanges([
-    { start_date: "2026-07-20", end_date: "2026-07-22" },
-    { start_date: "2026-07-20", end_date: "2026-07-22" },
-    { start_date: "2026-07-22", end_date: "2026-07-24" },
-  ], WINDOW), [
-    { startDate: "2026-07-20", endDate: "2026-07-22" },
-    { startDate: "2026-07-22", endDate: "2026-07-24" },
+Deno.test("reserved ranges expose stable opaque identities and remove identity duplicates", async () => {
+  const ranges = await normalizeReservedRanges([
+    { identity: "family:private-a", start_date: "2026-07-20", end_date: "2026-07-22" },
+    { identity: "family:private-a", start_date: "2026-07-20", end_date: "2026-07-22" },
+    { identity: "external:provider:private-b", start_date: "2026-07-22", end_date: "2026-07-24" },
+  ], WINDOW, IDENTITY_SECRET);
+  assertEquals(ranges, [
+    {
+      reservationId: await publicReservationId("family:private-a", IDENTITY_SECRET),
+      startDate: "2026-07-20",
+      endDate: "2026-07-22",
+    },
+    {
+      reservationId: await publicReservationId("external:provider:private-b", IDENTITY_SECRET),
+      startDate: "2026-07-22",
+      endDate: "2026-07-24",
+    },
   ]);
+  assertFalse(JSON.stringify(ranges).includes("private"));
 });
 
-Deno.test("availability unifies family, Airbnb and Booking without source details", () => {
-  const payload = buildAvailabilityPayload({
-    reservations: [{ start_date: "2026-07-20", end_date: "2026-07-22" }],
+Deno.test("availability unifies family, Airbnb and Booking without source details", async () => {
+  const payload = await buildAvailabilityPayload({
+    reservations: [{ identity: "family:a", start_date: "2026-07-20", end_date: "2026-07-22" }],
     externalEvents: [
-      { start_date: "2026-07-21", end_date: "2026-07-24" },
-      { start_date: "2026-08-01", end_date: "2026-08-03" },
+      { identity: "external:air:a", start_date: "2026-07-21", end_date: "2026-07-24" },
+      { identity: "external:book:b", start_date: "2026-08-01", end_date: "2026-08-03" },
     ],
     syncStatus: LIVE_SYNC,
+    identitySecret: IDENTITY_SECRET,
     now: NOW,
   });
 
   assertEquals(payload.status, "live");
   assertEquals(payload.lastSuccessfulSyncAt, "2026-07-17T14:50:00.000Z");
   assertEquals(payload.reservedRanges, [
-    { startDate: "2026-07-20", endDate: "2026-07-22" },
-    { startDate: "2026-07-21", endDate: "2026-07-24" },
-    { startDate: "2026-08-01", endDate: "2026-08-03" },
+    { reservationId: await publicReservationId("family:a", IDENTITY_SECRET), startDate: "2026-07-20", endDate: "2026-07-22" },
+    { reservationId: await publicReservationId("external:air:a", IDENTITY_SECRET), startDate: "2026-07-21", endDate: "2026-07-24" },
+    { reservationId: await publicReservationId("external:book:b", IDENTITY_SECRET), startDate: "2026-08-01", endDate: "2026-08-03" },
   ]);
   assertEquals(payload.blockedRanges, [
     { startDate: "2026-07-20", endDate: "2026-07-24" },
@@ -95,11 +108,12 @@ Deno.test("freshness distinguishes live, retained stale data and unavailable sou
   ], NOW).status, "unavailable");
 });
 
-Deno.test("stale payload retains the last valid blocked ranges", () => {
-  const payload = buildAvailabilityPayload({
+Deno.test("stale payload retains the last valid blocked ranges", async () => {
+  const payload = await buildAvailabilityPayload({
     reservations: [],
-    externalEvents: [{ start_date: "2026-09-02", end_date: "2026-09-05" }],
+    externalEvents: [{ identity: "external:stale", start_date: "2026-09-02", end_date: "2026-09-05" }],
     syncStatus: [{ ...LIVE_SYNC[0], status: "error" }, LIVE_SYNC[1]],
+    identitySecret: IDENTITY_SECRET,
     now: NOW,
   });
   assertEquals(payload.status, "stale");

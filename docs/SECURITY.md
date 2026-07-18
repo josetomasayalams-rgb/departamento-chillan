@@ -15,7 +15,7 @@ La PWA usa un cliente público de Supabase y está diseñada para un grupo famil
 | Riesgo | Control actual |
 | --- | --- |
 | Fuga de detalles familiares por iCal | El feed publica solo “No disponible” |
-| Fuga de proveedor o huésped hacia Operaciones | `/availability` publica únicamente rangos de fechas sanitizados, sin fuente, UID, familia, huésped, notas ni URL |
+| Fuga de proveedor o huésped hacia Operaciones | `/availability` publica fechas y un identificador HMAC opaco; nunca fuente, UID, familia, huésped, notas ni URL |
 | Fallo de un proveedor externo | La sincronización conserva el último conjunto válido |
 | HTML inyectado desde notas | La interfaz escapa texto antes de insertarlo |
 | Respuestas externas grandes | La función limita el tamaño del calendario |

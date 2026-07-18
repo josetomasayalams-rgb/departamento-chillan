@@ -8,4 +8,5 @@
 
 Operaciones consume el contrato HTTPS público `/availability` sin SDK adicional;
 no accede a tablas, credenciales ni URLs iCal y no comparte código ejecutable
-con esta plataforma.
+con esta plataforma. La Edge Function usa una clave privada del entorno para
+derivar identidades HMAC estables que no revelan los identificadores de origen.
