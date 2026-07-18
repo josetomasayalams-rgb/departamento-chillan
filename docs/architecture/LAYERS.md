@@ -29,7 +29,7 @@ Dominios puros: ical.ts | availability.ts
 
 El test `tests/architecture/boundary.test.mjs` verifica los imports de las capas ejecutables. No hay violaciones base; `known-violations.json` debe permanecer vacío.
 
-La ventana móvil pertenece a la capa Cliente: deriva 31 fechas desde un inicio,
+La ventana móvil pertenece a la capa Cliente: deriva 30 fechas desde un inicio,
 las alinea con la semana y vuelve a renderizar cuando cambia el día. No consulta
 el puerto ni la Edge Function para calcular el rango. La misma reconciliación
 actualiza `firstBookable` para conservar el margen de Airbnb.

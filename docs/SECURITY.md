@@ -24,7 +24,7 @@ La PWA usa un cliente público de Supabase y está diseñada para un grupo famil
 Preservar el check-in original de una estadía activa no amplía los campos del
 contrato: sigue entregando únicamente identidad opaca y fechas de la reserva.
 
-Mostrar 31 días consecutivos, incluso cuando cruzan al mes siguiente, es una
+Mostrar 30 días consecutivos, incluso cuando cruzan al mes siguiente, es una
 proyección local de datos ya autorizados. No amplía los feeds, no revela campos
 nuevos y conserva las restricciones de reserva y el margen de Airbnb.
 

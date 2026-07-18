@@ -20,7 +20,7 @@ reservations(family_id=particular) + external_calendar_events → /availability 
 reservations(todas) + external_calendar_events → /public-availability → Linktree (solo ocupado/libre)
 ```
 
-La PWA proyecta reservas y bloqueos sobre una ventana móvil de 31 fechas
+La PWA proyecta reservas y bloqueos sobre una ventana móvil de 30 fechas
 consecutivas. `state.view.start` controla el inicio y `followsToday` permite que
 la vista avance con la fecha local; navegar manualmente pausa ese seguimiento
 hasta usar `Desde hoy`. El margen de Airbnb se recalcula en la misma reconciliación
