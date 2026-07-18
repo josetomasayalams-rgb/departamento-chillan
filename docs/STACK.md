@@ -18,7 +18,8 @@ bloqueos se recorta al horizonte de disponibilidad.
 El rango visible se deriva con funciones nativas de fecha y se reconcilia una
 vez por minuto mientras la pestaña está abierta. Son 30 fechas consecutivas en
 estado de presentación; no se añadió una dependencia de calendario ni un nuevo
-modelo persistente.
+modelo persistente. El cruce de mes se representa con una clase visual en el día 1,
+sin capa ni dependencia nueva.
 
 El Linktree consume `/public-availability` con `fetch` y `cache: no-store`.
 Ese contrato consulta todos los grupos familiares, Airbnb y Booking, pero

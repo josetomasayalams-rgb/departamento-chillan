@@ -40,9 +40,7 @@ const CONFIG = {
   airbnbMarginDays: 4,   // primer día reservable = hoy + N (margen Airbnb)
 };
 
-const VERSION = "25";  // marca visible (pestaña + badge) para detectar si hay caché
-const MONTHS = ["Enero","Febrero","Marzo","Abril","Mayo","Junio",
-                "Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
+const VERSION = "26";  // marca visible (pestaña + badge) para detectar si hay caché
 const MON_SHORT = ["ene","feb","mar","abr","may","jun","jul","ago","sep","oct","nov","dic"];
 const WD = ["Lun","Mar","Mié","Jue","Vie","Sáb","Dom"];
 const LS_KEY = "chillan-reservations";
@@ -110,33 +108,6 @@ function rollingMonthWindow(startIso, days=CONFIG.rollingDays){
   };
 }
 
-function monthSegmentsForWindow(windowRange){
-  const segments = [];
-  for (const dateIso of windowRange.dates){
-    const { y, m } = parseISO(dateIso);
-    const key = `${y}-${pad(m + 1)}`;
-    const previous = segments[segments.length - 1];
-    if (previous?.key === key){
-      previous.days += 1;
-      previous.end = dateIso;
-    } else {
-      segments.push({ key, year:y, month:m, name:MONTHS[m], short:MON_SHORT[m], days:1, start:dateIso, end:dateIso });
-    }
-  }
-  return segments;
-}
-
-function renderMonthSpan(windowRange){
-  const span = document.getElementById("month-span");
-  if (!span) return;
-  const segments = monthSegmentsForWindow(windowRange);
-  span.innerHTML = segments.map((segment, index) => `
-    <div class="month-span-segment tone-${index % 2}" style="--month-days:${segment.days}" data-month="${segment.key}">
-      <strong>${segment.name} ${segment.year}</strong>
-      <small>${segment.days} día${segment.days === 1 ? "" : "s"}</small>
-    </div>`).join("");
-  span.setAttribute("aria-label", `Calendario de ${windowRange.dates.length} días corridos: ${segments.map(segment => `${segment.name} ${segment.year}, ${segment.days} días`).join("; ")}`);
-}
 function reconcileRollingView(view, currentDate=todayIso()){
   if (view?.followsToday === false) return { start: view.start, followsToday: false };
   return { start: currentDate, followsToday: true };
@@ -448,8 +419,6 @@ function renderGrid(){
   grid.dataset.windowStart = windowRange.start;
   grid.dataset.windowEnd = windowRange.endInclusive;
   grid.dataset.windowDays = String(windowRange.dates.length);
-  renderMonthSpan(windowRange);
-
   for (let i=0; i<totalCells; i++){
     const dateIndex = i - lead;
     const cell = document.createElement("div");
@@ -460,11 +429,10 @@ function renderGrid(){
     }
     const dateStr = windowRange.dates[dateIndex];
     const { y, m, d: dayNum } = parseISO(dateStr);
-    const monthOffset = (y * 12 + m) - (firstParts.y * 12 + firstParts.m);
     const startsMonth = dayNum === 1;
     const blocked = state.admin ? false : (dateStr < state.firstBookable);
     cell.className = "cell" + (dateStr === todayStr ? " today" : "") + (blocked ? " blocked" : "")
-      + ` month-tone-${Math.abs(monthOffset) % 2}` + (startsMonth ? " month-start" : "");
+      + (startsMonth ? " month-start" : "");
     cell.dataset.date = dateStr;
     cell.dataset.month = `${y}-${pad(m + 1)}`;
     if (blocked) cell.title = "No disponible (margen Airbnb)";
@@ -1198,7 +1166,6 @@ if (typeof document !== "undefined") main();
 
 if (typeof module !== "undefined" && module.exports){
   module.exports = {
-    monthSegmentsForWindow,
     reconcileRollingView,
     rollingMonthWindow,
   };

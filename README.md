@@ -12,8 +12,8 @@ sincronizar disponibilidad con Airbnb y Booking mediante iCal.
 ## Comportamiento de fechas
 
 La vista principal comienza hoy y muestra 30 días consecutivos, aunque el rango
-cruce al mes siguiente. Una franja proporcional nombra cada mes, indica cuántos
-días aporta y el día 1 queda resaltado. Se desplaza automáticamente cada día. Las
+cruce al mes siguiente. El inicio del mes siguiente se indica solamente con el
+día 1 marcado en dorado, sin franjas ni tintes adicionales. Se desplaza automáticamente cada día. Las
 flechas recorren periodos de 30 días y `Desde hoy` reactiva el seguimiento.
 
 Todas las reservas usan la convencion hotelera `[llegada, salida)`. Una reserva

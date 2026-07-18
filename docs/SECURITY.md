@@ -26,6 +26,7 @@ contrato: sigue entregando únicamente identidad opaca y fechas de la reserva.
 
 Mostrar 30 días consecutivos, incluso cuando cruzan al mes siguiente, es una
 proyección local de datos ya autorizados. No amplía los feeds, no revela campos
-nuevos y conserva las restricciones de reserva y el margen de Airbnb.
+nuevos y conserva las restricciones de reserva y el margen de Airbnb. Marcar el
+día 1 en dorado, sin tintes por mes, es únicamente una decisión de presentación.
 
 Reporta un incidente a los administradores del departamento; evita pegar información sensible en tickets o conversaciones.

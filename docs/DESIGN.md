@@ -2,4 +2,4 @@
 
 La interfaz prioriza lectura rápida del calendario y contraste de las familias. Liquid Glass es un lenguaje visual, no una razón para sacrificar legibilidad, interacción táctil o contenido en español.
 
-El calendario usa una ventana móvil de 30 días consecutivos desde hoy, en vez de un mes calendario fijo. El encabezado comunica el rango completo; una franja proporcional nombra cada mes, cuenta sus días visibles y el día 1 usa borde y marcador destacados. El periodo avanza al cambiar la fecha local. La navegación manual se conserva hasta tocar `Desde hoy` y el margen de Airbnb se recalcula con el mismo cambio diario.
+El calendario usa una ventana móvil de 30 días consecutivos desde hoy, en vez de un mes calendario fijo. El encabezado comunica el rango completo; al cruzar de mes, únicamente el día 1 usa borde y marcador dorados, sin franjas ni tintes de fondo por mes. El periodo avanza al cambiar la fecha local. La navegación manual se conserva hasta tocar `Desde hoy` y el margen de Airbnb se recalcula con el mismo cambio diario.
