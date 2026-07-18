@@ -38,6 +38,11 @@ directamente.
 la identidad operativa no parezca cambiar cuando avanza la ventana diaria;
 `blockedRanges` sí se recorta a la ventana pública.
 
+`/public-availability` es la frontera del Linktree. Consulta todas las reservas
+familiares y los bloqueos externos, pero devuelve únicamente `blockedRanges` y
+frescura. No entrega identidades individuales y no reemplaza el contrato de
+Operaciones.
+
 ## Remediación
 
 Si aparece `VIOLATION`, mueve la lógica a la capa de destino adecuada. Para cambiar almacenamiento, agrega un adaptador en `initStore()` que implemente la misma interfaz; no cambies cada llamada de la UI.

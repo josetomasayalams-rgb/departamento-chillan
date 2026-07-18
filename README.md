@@ -5,7 +5,8 @@ sincronizar disponibilidad con Airbnb y Booking mediante iCal.
 
 - Aplicacion: <https://josetomasayalams-rgb.github.io/departamento-chillan/>
 - Feed familiar: <https://uimqusoylxpyljbfqumm.supabase.co/functions/v1/calendar-ical/calendario-familiar.ics>
-- Disponibilidad pública sanitizada: <https://uimqusoylxpyljbfqumm.supabase.co/functions/v1/calendar-ical/availability>
+- Disponibilidad operativa sanitizada: <https://uimqusoylxpyljbfqumm.supabase.co/functions/v1/calendar-ical/availability>
+- Disponibilidad pública binaria: <https://uimqusoylxpyljbfqumm.supabase.co/functions/v1/calendar-ical/public-availability>
 - Backend compartido: Supabase, proyecto `uimqusoylxpyljbfqumm`
 
 ## Comportamiento de fechas
@@ -32,14 +33,20 @@ validos. Un cron de Supabase ejecuta la sincronizacion cada 15 minutos.
 El feed familiar nunca consulta `external_calendar_events`, lo que evita volver
 a exportar bloqueos importados y formar ciclos.
 
-La ruta JSON `/availability` une reservas familiares y bloqueos externos dentro
-de un horizonte de 12 meses. Publica las estadías sanitizadas por separado en
+La ruta JSON `/availability` une reservas particulares y bloqueos externos dentro
+de un horizonte de 12 meses para Operaciones. Publica las estadías sanitizadas por separado en
 `reservedRanges`, cada una con un `reservationId` opaco y estable generado con
 HMAC, y los períodos ocupados consolidados en `blockedRanges`, además
 de frescura agregada. Operaciones consume solo `reservedRanges`; ningún rango
 incluye fuente, UID, familia, huésped, notas ni URLs iCal. Si una fuente nunca se ha sincronizado, responde
 `unavailable`; si conserva datos tras un error o supera 45 minutos sin éxito,
 responde `stale`.
+
+La ruta `/public-availability` une **todas** las reservas familiares con Airbnb
+y Booking. Devuelve solo `blockedRanges`, sin identidades individuales, y está
+destinada al calendario público del Linktree. Una reserva familiar aparece en
+esta ruta al guardarse en Supabase; los dos canales externos conservan el ciclo
+iCal automático de 15 minutos.
 
 ## Desarrollo local
 

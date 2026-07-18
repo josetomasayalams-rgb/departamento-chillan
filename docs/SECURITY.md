@@ -16,11 +16,12 @@ La PWA usa un cliente público de Supabase y está diseñada para un grupo famil
 | --- | --- |
 | Fuga de detalles familiares por iCal | El feed publica solo “No disponible” |
 | Fuga de proveedor o huésped hacia Operaciones | `/availability` publica sólo reservas particulares y fechas externas con un identificador HMAC opaco; nunca fuente, UID, familia, huésped, notas ni URL |
-
-Preservar el check-in original de una estadía activa no amplía los campos del
-contrato: sigue entregando únicamente identidad opaca y fechas de la reserva.
+| Fuga de identidad hacia el Linktree | `/public-availability` incluye todas las ocupaciones, pero solo publica rangos consolidados sin identificadores ni fuente |
 | Fallo de un proveedor externo | La sincronización conserva el último conjunto válido |
 | HTML inyectado desde notas | La interfaz escapa texto antes de insertarlo |
 | Respuestas externas grandes | La función limita el tamaño del calendario |
+
+Preservar el check-in original de una estadía activa no amplía los campos del
+contrato: sigue entregando únicamente identidad opaca y fechas de la reserva.
 
 Reporta un incidente a los administradores del departamento; evita pegar información sensible en tickets o conversaciones.

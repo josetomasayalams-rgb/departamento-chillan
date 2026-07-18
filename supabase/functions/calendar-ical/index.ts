@@ -6,11 +6,13 @@ import {
 } from "./ical.ts";
 import {
   type AvailabilityPayload,
+  type PublicAvailabilityPayload,
   type AvailabilityRangeInput,
   type AvailabilitySyncInput,
   type AvailabilityWindow,
   availabilityWindow,
   buildAvailabilityPayload,
+  buildPublicAvailabilityPayload,
 } from "./availability.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") || "";
@@ -61,37 +63,61 @@ export interface AvailabilityData {
 export interface HandlerDependencies {
   now?: () => Date;
   identitySecret?: string;
-  loadAvailability?: (window: AvailabilityWindow) => Promise<AvailabilityData>;
+  loadAvailability?: (
+    window: AvailabilityWindow,
+    audience: AvailabilityAudience,
+  ) => Promise<AvailabilityData>;
 }
 
-export function mapParticularReservations(rows: Array<{
+export type AvailabilityAudience = "operations" | "public";
+
+type ReservationRow = {
   id: string;
   family_id: string;
   start_date: string;
   end_date: string;
-}>): AvailabilityRangeInput[] {
-  return rows
-    .filter((row) => row.family_id === OPERATIONS_RESERVATION_FAMILY_ID)
-    .map((row) => ({
-      // Se conserva el prefijo histórico para que la identidad pública HMAC
-      // no cambie y Operaciones no duplique reservas ya conocidas.
-      identity: `family:${row.id}`,
-      start_date: row.start_date,
-      end_date: row.end_date,
-    }));
+};
+
+function mapReservationRows(rows: ReservationRow[]): AvailabilityRangeInput[] {
+  return rows.map((row) => ({
+    identity: `family:${row.id}`,
+    start_date: row.start_date,
+    end_date: row.end_date,
+  }));
 }
 
-async function loadAvailability(window: AvailabilityWindow): Promise<AvailabilityData> {
+export function mapParticularReservations(rows: ReservationRow[]): AvailabilityRangeInput[] {
+  // Se conserva el prefijo histórico para que la identidad pública HMAC
+  // no cambie y Operaciones no duplique reservas ya conocidas.
+  return mapReservationRows(rows.filter((row) =>
+    row.family_id === OPERATIONS_RESERVATION_FAMILY_ID
+  ));
+}
+
+export function mapPublicReservations(rows: ReservationRow[]): AvailabilityRangeInput[] {
+  return mapReservationRows(rows);
+}
+
+async function loadAvailability(
+  window: AvailabilityWindow,
+  audience: AvailabilityAudience,
+): Promise<AvailabilityData> {
   const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
+  let reservationsQuery = supabase.from("reservations")
+    .select("id,family_id,start_date,end_date")
+    .lt("start_date", window.to)
+    .gt("end_date", window.from)
+    .order("start_date");
+  if (audience === "operations") {
+    reservationsQuery = reservationsQuery.eq(
+      "family_id",
+      OPERATIONS_RESERVATION_FAMILY_ID,
+    );
+  }
   const [reservations, externalEvents, syncStatus] = await Promise.all([
-    supabase.from("reservations")
-      .select("id,family_id,start_date,end_date")
-      .eq("family_id", OPERATIONS_RESERVATION_FAMILY_ID)
-      .lt("start_date", window.to)
-      .gt("end_date", window.from)
-      .order("start_date"),
+    reservationsQuery,
     supabase.from("external_calendar_events")
       .select("source,external_uid,start_date,end_date")
       .lt("start_date", window.to)
@@ -105,7 +131,9 @@ async function loadAvailability(window: AvailabilityWindow): Promise<Availabilit
     throw reservations.error || externalEvents.error || syncStatus.error;
   }
   return {
-    reservations: mapParticularReservations(reservations.data || []),
+    reservations: audience === "public"
+      ? mapPublicReservations(reservations.data || [])
+      : mapParticularReservations(reservations.data || []),
     externalEvents: (externalEvents.data || []).map((row) => ({
       identity: `external:${row.source}:${row.external_uid}`,
       start_date: row.start_date,
@@ -115,13 +143,18 @@ async function loadAvailability(window: AvailabilityWindow): Promise<Availabilit
   };
 }
 
-async function serveAvailability(dependencies: HandlerDependencies): Promise<Response> {
+async function serveAvailability(
+  dependencies: HandlerDependencies,
+  audience: AvailabilityAudience,
+): Promise<Response> {
   const now = dependencies.now?.() ?? new Date();
   const window = availabilityWindow(now);
   try {
-    const data = await (dependencies.loadAvailability ?? loadAvailability)(window);
+    const data = await (dependencies.loadAvailability ?? loadAvailability)(window, audience);
     const identitySecret = dependencies.identitySecret || AVAILABILITY_ID_SECRET || "availability-test-only";
-    const payload: AvailabilityPayload = await buildAvailabilityPayload({ ...data, now, identitySecret });
+    const payload: AvailabilityPayload | PublicAvailabilityPayload = audience === "public"
+      ? await buildPublicAvailabilityPayload({ ...data, now, identitySecret })
+      : await buildAvailabilityPayload({ ...data, now, identitySecret });
     return jsonResponse(payload);
   } catch (error) {
     console.error("public-availability-query", safeError(error));
@@ -230,8 +263,11 @@ export async function handleRequest(
   if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders });
 
   const path = new URL(request.url).pathname.replace(/\/+$/, "");
+  if (request.method === "GET" && path.endsWith("/public-availability")) {
+    return await serveAvailability(dependencies, "public");
+  }
   if (request.method === "GET" && path.endsWith("/availability")) {
-    return await serveAvailability(dependencies);
+    return await serveAvailability(dependencies, "operations");
   }
 
   if (request.method === "GET" && path.endsWith("/calendario-familiar.ics")) {
