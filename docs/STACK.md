@@ -12,3 +12,5 @@ con esta plataforma. La Edge Function usa una clave privada del entorno para
 derivar identidades HMAC estables que no revelan los identificadores de origen.
 La consulta filtra `reservations` por `family_id = particular`; los demás grupos
 familiares permanecen exclusivamente en esta plataforma.
+La lista individual preserva fechas originales; sólo la vista compacta de
+bloqueos se recorta al horizonte de disponibilidad.

@@ -34,6 +34,9 @@ particulares y los bloqueos de Airbnb/Booking como `reservedRanges`, además de
 `blockedRanges` y frescura usando fechas e identidades HMAC opacas; la plataforma
 consumidora no consulta las tablas de reservas ni los calendarios externos
 directamente.
+`reservedRanges` conserva las fechas originales de cada estadía activa para que
+la identidad operativa no parezca cambiar cuando avanza la ventana diaria;
+`blockedRanges` sí se recorta a la ventana pública.
 
 ## Remediación
 

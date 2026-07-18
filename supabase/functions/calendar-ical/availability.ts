@@ -89,13 +89,15 @@ export function availabilityWindow(now: Date): AvailabilityWindow {
 function normalizeDateRanges(
   ranges: readonly AvailabilityRangeInput[],
   window: AvailabilityWindow,
+  clipToWindow = true,
 ): Array<AvailabilityRangeInput & { startDate: string; endDate: string }> {
   const clipped = ranges.flatMap((range) => {
     if (!range.identity) return [];
     if (!isValidIsoDate(range.start_date) || !isValidIsoDate(range.end_date)) return [];
     if (range.end_date <= range.start_date) return [];
-    const startDate = range.start_date < window.from ? window.from : range.start_date;
-    const endDate = range.end_date > window.to ? window.to : range.end_date;
+    if (range.start_date >= window.to || range.end_date <= window.from) return [];
+    const startDate = clipToWindow && range.start_date < window.from ? window.from : range.start_date;
+    const endDate = clipToWindow && range.end_date > window.to ? window.to : range.end_date;
     return endDate > startDate ? [{ ...range, startDate, endDate }] : [];
   }).sort((left, right) =>
     left.startDate.localeCompare(right.startDate) ||
@@ -131,7 +133,9 @@ export async function normalizeReservedRanges(
   window: AvailabilityWindow,
   identitySecret: string,
 ): Promise<AvailabilityPayload["reservedRanges"]> {
-  return await Promise.all(normalizeDateRanges(ranges, window).map(async (range) => ({
+  // Las estadías individuales preservan sus fechas originales para que una
+  // reserva en curso no parezca cambiar cada medianoche en Operaciones.
+  return await Promise.all(normalizeDateRanges(ranges, window, false).map(async (range) => ({
     reservationId: await publicReservationId(range.identity, identitySecret),
     startDate: range.startDate,
     endDate: range.endDate,
