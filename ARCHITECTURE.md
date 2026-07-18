@@ -23,4 +23,5 @@ Las reglas de dependencia y su verificación mecánica están en `docs/architect
 La disponibilidad pública ofrece estadías individuales sanitizadas en
 `reservedRanges` y compacta todas las fuentes en `blockedRanges`. Ninguno de los
 dos contratos publica fuente, familia, huésped, UID, notas ni URLs; Operaciones
-solo recibe las fechas necesarias para representar cada estadía como “Reservado”.
+solo recibe fechas y un identificador opaco estable, derivado mediante HMAC, para
+representar cada estadía como “Reservado” y detectar cambios sin conocer su origen.

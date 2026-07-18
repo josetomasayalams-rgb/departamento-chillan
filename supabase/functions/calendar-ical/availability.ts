@@ -7,6 +7,7 @@ const REQUIRED_SOURCES = ["airbnb", "booking"] as const;
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 export interface AvailabilityRangeInput {
+  identity: string;
   start_date: string;
   end_date: string;
 }
@@ -30,7 +31,7 @@ export interface AvailabilityPayload {
   range: AvailabilityWindow;
   status: "live" | "stale" | "unavailable";
   lastSuccessfulSyncAt: string | null;
-  reservedRanges: Array<{ startDate: string; endDate: string }>;
+  reservedRanges: Array<{ reservationId: string; startDate: string; endDate: string }>;
   blockedRanges: Array<{ startDate: string; endDate: string }>;
 }
 
@@ -85,38 +86,69 @@ export function availabilityWindow(now: Date): AvailabilityWindow {
   return { from, to: addMonthsClamped(from, AVAILABILITY_MONTHS), endExclusive: true };
 }
 
-export function normalizeReservedRanges(
+function normalizeDateRanges(
   ranges: readonly AvailabilityRangeInput[],
   window: AvailabilityWindow,
-): AvailabilityPayload["reservedRanges"] {
+): Array<AvailabilityRangeInput & { startDate: string; endDate: string }> {
   const clipped = ranges.flatMap((range) => {
+    if (!range.identity) return [];
     if (!isValidIsoDate(range.start_date) || !isValidIsoDate(range.end_date)) return [];
     if (range.end_date <= range.start_date) return [];
     const startDate = range.start_date < window.from ? window.from : range.start_date;
     const endDate = range.end_date > window.to ? window.to : range.end_date;
-    return endDate > startDate ? [{ startDate, endDate }] : [];
+    return endDate > startDate ? [{ ...range, startDate, endDate }] : [];
   }).sort((left, right) =>
-    left.startDate.localeCompare(right.startDate) || left.endDate.localeCompare(right.endDate)
+    left.startDate.localeCompare(right.startDate) ||
+    left.endDate.localeCompare(right.endDate) ||
+    left.identity.localeCompare(right.identity)
   );
 
   return clipped.filter((range, index) =>
     index === 0 ||
-    range.startDate !== clipped[index - 1].startDate ||
-    range.endDate !== clipped[index - 1].endDate
+    range.identity !== clipped[index - 1].identity
   );
+}
+
+export async function publicReservationId(identity: string, secret: string): Promise<string> {
+  if (!secret) throw new Error("Availability identity secret is required");
+  const encoder = new TextEncoder();
+  const key = await crypto.subtle.importKey(
+    "raw",
+    encoder.encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const digest = await crypto.subtle.sign("HMAC", key, encoder.encode(`availability:v1:${identity}`));
+  const hex = [...new Uint8Array(digest)]
+    .map((value) => value.toString(16).padStart(2, "0"))
+    .join("");
+  return `rsv_${hex.slice(0, 32)}`;
+}
+
+export async function normalizeReservedRanges(
+  ranges: readonly AvailabilityRangeInput[],
+  window: AvailabilityWindow,
+  identitySecret: string,
+): Promise<AvailabilityPayload["reservedRanges"]> {
+  return await Promise.all(normalizeDateRanges(ranges, window).map(async (range) => ({
+    reservationId: await publicReservationId(range.identity, identitySecret),
+    startDate: range.startDate,
+    endDate: range.endDate,
+  })));
 }
 
 export function mergeBlockedRanges(
   ranges: readonly AvailabilityRangeInput[],
   window: AvailabilityWindow,
 ): AvailabilityPayload["blockedRanges"] {
-  const normalized = normalizeReservedRanges(ranges, window);
+  const normalized = normalizeDateRanges(ranges, window);
 
   const merged: AvailabilityPayload["blockedRanges"] = [];
   for (const range of normalized) {
     const current = merged.at(-1);
     if (!current || range.startDate > current.endDate) {
-      merged.push({ ...range });
+      merged.push({ startDate: range.startDate, endDate: range.endDate });
       continue;
     }
     if (range.endDate > current.endDate) current.endDate = range.endDate;
@@ -153,12 +185,13 @@ export function availabilityFreshness(
   };
 }
 
-export function buildAvailabilityPayload(input: {
+export async function buildAvailabilityPayload(input: {
   reservations: readonly AvailabilityRangeInput[];
   externalEvents: readonly AvailabilityRangeInput[];
   syncStatus: readonly AvailabilitySyncInput[];
+  identitySecret: string;
   now: Date;
-}): AvailabilityPayload {
+}): Promise<AvailabilityPayload> {
   const range = availabilityWindow(input.now);
   const freshness = availabilityFreshness(input.syncStatus, input.now);
   const reservations = [...input.reservations, ...input.externalEvents];
@@ -168,7 +201,7 @@ export function buildAvailabilityPayload(input: {
     generatedAt: input.now.toISOString(),
     range,
     ...freshness,
-    reservedRanges: normalizeReservedRanges(reservations, range),
+    reservedRanges: await normalizeReservedRanges(reservations, range, input.identitySecret),
     blockedRanges: mergeBlockedRanges(reservations, range),
   };
 }

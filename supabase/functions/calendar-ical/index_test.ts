@@ -11,9 +11,10 @@ const URL = "https://example.supabase.co/functions/v1/calendar-ical/availability
 Deno.test("public availability route returns a sanitized contract and security headers", async () => {
   const response = await handleRequest(new Request(URL), {
     now: () => NOW,
+    identitySecret: "test-identity-secret",
     loadAvailability: async () => ({
-      reservations: [{ start_date: "2026-07-20", end_date: "2026-07-22" }],
-      externalEvents: [{ start_date: "2026-08-01", end_date: "2026-08-03" }],
+      reservations: [{ identity: "family:private-a", start_date: "2026-07-20", end_date: "2026-07-22" }],
+      externalEvents: [{ identity: "external:private-b", start_date: "2026-08-01", end_date: "2026-08-03" }],
       syncStatus: [
         { source: "airbnb", status: "ok", last_success_at: "2026-07-17T14:50:00.000Z" },
         { source: "booking", status: "ok", last_success_at: "2026-07-17T14:55:00.000Z" },
@@ -28,6 +29,7 @@ Deno.test("public availability route returns a sanitized contract and security h
   const body = await response.text();
   assertStringIncludes(body, '"status":"live"');
   assertStringIncludes(body, '"reservedRanges"');
+  assertStringIncludes(body, '"reservationId":"rsv_');
   assertStringIncludes(body, '"blockedRanges"');
   for (const privateTerm of ["uid", "note", "guest", "family_id", "external_uid"]) {
     assertFalse(body.toLowerCase().includes(privateTerm));
