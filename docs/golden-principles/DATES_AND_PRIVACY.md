@@ -6,6 +6,10 @@ Todas las estancias son `[llegada, salida)` y el feed público solo revela indis
 
 La fecha de salida vuelve a estar libre. Esta convención debe coincidir en la PWA, la base de datos y los calendarios generados o importados.
 
+La PWA puede mostrar un marcador `Check-out 12:00` en esa fecha libre. Es una
+señal informativa: no añade una noche ni impide mostrar `Check-in 15:00` para otra
+reserva el mismo día.
+
 ## Sí
 
 ```ts

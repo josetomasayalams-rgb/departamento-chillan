@@ -28,6 +28,11 @@ diaria. Cuando el rango cruza a otro mes, la vista sólo marca el día 1 en dora
 no añade franjas ni tintes de fondo por mes. Esta proyección no modifica reservas
 ni eventos externos.
 
+La proyección visual incluye la fecha exclusiva de salida únicamente para mostrar
+`Check-out 12:00`, mientras `Check-in 15:00` identifica la llegada. Esto no cambia
+el rango persistido `[llegada, salida)`: la salida sigue disponible y puede mostrar
+simultáneamente el check-in de otra reserva en un carril independiente.
+
 Las reglas de dependencia y su verificación mecánica están en `docs/architecture/LAYERS.md`. El contrato de datos vive en `schema.sql` y las migraciones son la evolución canónica del esquema.
 
 La disponibilidad pública ofrece las reservas particulares y estadías externas

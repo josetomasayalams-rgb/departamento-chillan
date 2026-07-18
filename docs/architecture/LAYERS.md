@@ -34,6 +34,9 @@ las alinea con la semana y vuelve a renderizar cuando cambia el día. No consult
 el puerto ni la Edge Function para calcular el rango. La misma reconciliación
 actualiza `firstBookable` para conservar el margen de Airbnb. El borde y marcador
 dorados del día 1 son presentación pura; no existe una franja ni un estado mensual.
+La misma capa añade un marcador informativo en la fecha exclusiva de salida para
+mostrar `Check-out 12:00`; no modifica el puerto, el rango persistido ni el cálculo
+de conflictos, y permite un `Check-in 15:00` concurrente en esa fecha.
 
 `/availability` es la frontera compartida con Operaciones. Publica las reservas
 particulares y los bloqueos de Airbnb/Booking como `reservedRanges`, además de
