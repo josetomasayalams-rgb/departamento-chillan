@@ -35,6 +35,8 @@ export interface AvailabilityPayload {
   blockedRanges: Array<{ startDate: string; endDate: string }>;
 }
 
+export type PublicAvailabilityPayload = Omit<AvailabilityPayload, "reservedRanges">;
+
 function isoParts(value: string): { year: number; month: number; day: number } | null {
   if (!ISO_DATE.test(value)) return null;
   const [year, month, day] = value.split("-").map(Number);
@@ -208,4 +210,16 @@ export async function buildAvailabilityPayload(input: {
     reservedRanges: await normalizeReservedRanges(reservations, range, input.identitySecret),
     blockedRanges: mergeBlockedRanges(reservations, range),
   };
+}
+
+export async function buildPublicAvailabilityPayload(input: {
+  reservations: readonly AvailabilityRangeInput[];
+  externalEvents: readonly AvailabilityRangeInput[];
+  syncStatus: readonly AvailabilitySyncInput[];
+  identitySecret: string;
+  now: Date;
+}): Promise<PublicAvailabilityPayload> {
+  const { reservedRanges: _privateReservations, ...publicPayload } =
+    await buildAvailabilityPayload(input);
+  return publicPayload;
 }

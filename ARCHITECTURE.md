@@ -16,7 +16,8 @@ La plataforma combina una PWA estática y una Edge Function de sincronización; 
 Usuario → PWA (`app.js`) → `state.store` → localStorage | Supabase
 Airbnb/Booking → Edge Function → external_calendar_events → PWA
 Supabase reservations → Edge Function → feed iCal público
-reservations(family_id=particular) + external_calendar_events → /availability → Operaciones (solo fechas)
+reservations(family_id=particular) + external_calendar_events → /availability → Operaciones (identidad opaca + fechas)
+reservations(todas) + external_calendar_events → /public-availability → Linktree (solo ocupado/libre)
 ```
 
 Las reglas de dependencia y su verificación mecánica están en `docs/architecture/LAYERS.md`. El contrato de datos vive en `schema.sql` y las migraciones son la evolución canónica del esquema.
@@ -29,3 +30,9 @@ solo recibe fechas y un identificador opaco estable, derivado mediante HMAC, par
 representar cada estadía como “Reserva” y detectar cambios sin conocer su origen.
 Las estadías individuales conservan su check-in original mientras estén activas;
 el recorte a la ventana se aplica únicamente a los rangos compactos de bloqueo.
+
+El Linktree usa una frontera distinta: `/public-availability` incluye todas las
+reservas familiares para bloquear el inmueble de inmediato, pero elimina
+`reservedRanges` por completo. Su contrato solo contiene rangos consolidados de
+ocupación y frescura, de modo que nunca puede reconstruir identidades, familias
+ni canales.

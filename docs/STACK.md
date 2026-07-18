@@ -14,3 +14,10 @@ La consulta filtra `reservations` por `family_id = particular`; los demás grupo
 familiares permanecen exclusivamente en esta plataforma.
 La lista individual preserva fechas originales; sólo la vista compacta de
 bloqueos se recorta al horizonte de disponibilidad.
+
+El Linktree consume `/public-availability` con `fetch` y `cache: no-store`.
+Ese contrato consulta todos los grupos familiares, Airbnb y Booking, pero
+publica únicamente `blockedRanges`: no incluye `reservedRanges`, identidades
+HMAC ni nombres de proveedores. La separación evita que Operaciones trate una
+visita familiar como una estadía comercial y permite que la vista pública
+bloquee el inmueble desde que la reserva familiar existe en Supabase.

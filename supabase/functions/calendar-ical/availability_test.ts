@@ -6,6 +6,7 @@ import {
   availabilityFreshness,
   availabilityWindow,
   buildAvailabilityPayload,
+  buildPublicAvailabilityPayload,
   isValidIsoDate,
   mergeBlockedRanges,
   normalizeReservedRanges,
@@ -98,6 +99,25 @@ Deno.test("availability unifies family, Airbnb and Booking without source detail
   const publicBody = JSON.stringify(payload);
   for (const privateTerm of ["airbnb", "booking", "family", "source", "uid", "note", "guest"]) {
     assertFalse(publicBody.toLowerCase().includes(privateTerm));
+  }
+});
+
+Deno.test("public availability exposes only merged reserved or available dates", async () => {
+  const payload = await buildPublicAvailabilityPayload({
+    reservations: [{ identity: "family:a", start_date: "2026-07-20", end_date: "2026-07-22" }],
+    externalEvents: [{ identity: "external:air:a", start_date: "2026-07-21", end_date: "2026-07-24" }],
+    syncStatus: LIVE_SYNC,
+    identitySecret: IDENTITY_SECRET,
+    now: NOW,
+  });
+
+  assertEquals(payload.blockedRanges, [
+    { startDate: "2026-07-20", endDate: "2026-07-24" },
+  ]);
+  assertFalse("reservedRanges" in payload);
+  const publicBody = JSON.stringify(payload).toLowerCase();
+  for (const privateTerm of ["reservationid", "airbnb", "booking", "family", "source", "uid", "note", "guest"]) {
+    assertFalse(publicBody.includes(privateTerm));
   }
 });
 
