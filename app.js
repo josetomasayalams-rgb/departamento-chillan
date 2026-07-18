@@ -33,13 +33,14 @@ const CONFIG = {
   },
 
   weekStart: 1,          // 1 = lunes, 0 = domingo
+  rollingDays: 31,       // hoy + 30 días para una planificación mensual continua
   yearMin: 2020,
   yearMax: 2040,
   maxLanes: 3,           // barras visibles por celda antes de "+N"
   airbnbMarginDays: 4,   // primer día reservable = hoy + N (margen Airbnb)
 };
 
-const VERSION = "23";  // marca visible (pestaña + badge) para detectar si hay caché
+const VERSION = "24";  // marca visible (pestaña + badge) para detectar si hay caché
 const MONTHS = ["Enero","Febrero","Marzo","Abril","Mayo","Junio",
                 "Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
 const MON_SHORT = ["ene","feb","mar","abr","may","jun","jul","ago","sep","oct","nov","dic"];
@@ -50,7 +51,7 @@ const MAX_DATE = `${CONFIG.yearMax}-12-31`;   // tope de fechas reservables
 
 // ---------- Estado ----------
 const state = {
-  view: today(),
+  view: { start: null, followsToday: true },
   reservations: [],
   externalEvents: [],
   syncStatus: [],
@@ -66,6 +67,7 @@ const state = {
   feedChecks: new Map(),
   menuIdx: 0,
   undo: [],          // pila de inversas (máx 7) para Deshacer
+  rollingWindowHandle: null,
 };
 
 // ---------- Helpers fecha / familia / id ----------
@@ -74,6 +76,10 @@ function isoOf(y, m, d){ return `${y}-${pad(m+1)}-${pad(d)}`; }       // m 0-bas
 function today(){
   const d = new Date();
   return { y:d.getFullYear(), m:d.getMonth() };
+}
+function todayIso(){
+  const d = new Date();
+  return isoOf(d.getFullYear(), d.getMonth(), d.getDate());
 }
 function parseISO(s){ const [y,m,d] = s.split("-").map(Number); return {y,m:m-1,d}; }
 function fam(id){ return CONFIG.families.find(f => f.id === id); }
@@ -93,6 +99,31 @@ function addDays(iso, amount){
   const { y, m, d } = parseISO(iso);
   const date = new Date(Date.UTC(y, m, d + amount));
   return isoOf(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
+}
+function rollingMonthWindow(startIso, days=CONFIG.rollingDays){
+  const dates = Array.from({ length: days }, (_, index) => addDays(startIso, index));
+  return {
+    start: startIso,
+    endExclusive: addDays(startIso, days),
+    endInclusive: dates[dates.length - 1],
+    dates,
+  };
+}
+function reconcileRollingView(view, currentDate=todayIso()){
+  if (view?.followsToday === false) return { start: view.start, followsToday: false };
+  return { start: currentDate, followsToday: true };
+}
+function syncDailyPlanningWindow(){
+  const nextView = reconcileRollingView(state.view);
+  const nextFirstBookable = firstBookableIso();
+  const changed = nextView.start !== state.view.start
+    || nextView.followsToday !== state.view.followsToday
+    || nextFirstBookable !== state.firstBookable;
+  if (!changed) return false;
+  state.view = nextView;
+  state.firstBookable = nextFirstBookable;
+  render();
+  return true;
 }
 function sourceInfo(source){
   return CONFIG.externalSources[source] || { name:"Externo", color:"#64748B" };
@@ -317,7 +348,7 @@ function updateModeBadge(){
 // En dispositivos sin hover (touch) no bindeamos mouseenter/mouseleave: la
 // preview de brush por hover es desktop-only. En touch el brush-bar muestra
 // el rango y se actualiza por onCellClick → render.
-const HAS_HOVER = window.matchMedia("(hover: hover)").matches;
+const HAS_HOVER = typeof window !== "undefined" && window.matchMedia("(hover: hover)").matches;
 function render(){
   renderNav();
   renderFamilySelect();
@@ -348,14 +379,11 @@ function renderReservationOptions(){
 }
 
 function renderNav(){
-  const monthSel = document.getElementById("month");
-  const yearSel = document.getElementById("year");
-  if (!monthSel.options.length){
-    MONTHS.forEach((m,i) => monthSel.add(new Option(m, i)));
-    for (let y=CONFIG.yearMin; y<=CONFIG.yearMax; y++) yearSel.add(new Option(y, y));
-  }
-  monthSel.value = state.view.m;
-  yearSel.value = state.view.y;
+  const range = rollingMonthWindow(state.view.start);
+  const label = document.getElementById("range-label");
+  label.textContent = `${pretty(range.start)} — ${pretty(range.endInclusive)}`;
+  label.title = `Planificación de ${CONFIG.rollingDays} días consecutivos`;
+  label.classList.toggle("following-today", state.view.followsToday);
 }
 
 function renderFamilySelect(){
@@ -378,27 +406,31 @@ function renderFamilySelect(){
 }
 
 function renderGrid(){
-  const { y, m } = state.view;
-  const first = new Date(y, m, 1);
-  const daysInMonth = new Date(y, m+1, 0).getDate();
+  const windowRange = rollingMonthWindow(state.view.start);
+  const firstParts = parseISO(windowRange.start);
+  const first = new Date(firstParts.y, firstParts.m, firstParts.d);
   const lead = (first.getDay() - CONFIG.weekStart + 7) % 7;
-  const totalCells = Math.ceil((lead + daysInMonth) / 7) * 7;
+  const totalCells = Math.ceil((lead + windowRange.dates.length) / 7) * 7;
 
   const n = new Date();
   const todayStr = isoOf(n.getFullYear(), n.getMonth(), n.getDate());
 
   const grid = document.getElementById("grid");
   grid.innerHTML = "";
+  grid.dataset.windowStart = windowRange.start;
+  grid.dataset.windowEnd = windowRange.endInclusive;
+  grid.dataset.windowDays = String(windowRange.dates.length);
 
   for (let i=0; i<totalCells; i++){
-    const dayNum = i - lead + 1;
+    const dateIndex = i - lead;
     const cell = document.createElement("div");
-    if (dayNum < 1 || dayNum > daysInMonth){
+    if (dateIndex < 0 || dateIndex >= windowRange.dates.length){
       cell.className = "cell blank";
       grid.appendChild(cell);
       continue;
     }
-    const dateStr = isoOf(y, m, dayNum);
+    const dateStr = windowRange.dates[dateIndex];
+    const { m, d: dayNum } = parseISO(dateStr);
     const blocked = state.admin ? false : (dateStr < state.firstBookable);
     cell.className = "cell" + (dateStr === todayStr ? " today" : "") + (blocked ? " blocked" : "");
     cell.dataset.date = dateStr;
@@ -406,7 +438,7 @@ function renderGrid(){
 
     const num = document.createElement("div");
     num.className = "num";
-    num.textContent = dayNum;
+    num.innerHTML = `<span>${dayNum}</span>${dateIndex === 0 || dayNum === 1 ? `<small class="month-marker">${MON_SHORT[m]}</small>` : ""}`;
     cell.appendChild(num);
 
     const familyItems = state.reservations
@@ -911,15 +943,12 @@ function escapeHtml(s){ return s.replace(/[&<>"']/g, c =>
   ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c])); }
 
 // ---------- Navegación ----------
-function move(delta){                       // delta en meses
-  let { y, m } = state.view;
-  m += delta;
-  while (m < 0){ m += 12; y--; }
-  while (m > 11){ m -= 12; y++; }
-  // clampear al mes-límite correcto (no solo el año)
-  if (y < CONFIG.yearMin) state.view = { y: CONFIG.yearMin, m: 0 };
-  else if (y > CONFIG.yearMax) state.view = { y: CONFIG.yearMax, m: 11 };
-  else state.view = { y, m };
+function move(delta){
+  const minStart = `${CONFIG.yearMin}-01-01`;
+  const maxStart = `${CONFIG.yearMax}-12-01`;
+  const candidate = addDays(state.view.start, delta * CONFIG.rollingDays);
+  const start = candidate < minStart ? minStart : candidate > maxStart ? maxStart : candidate;
+  state.view = { start, followsToday: false };
   render();
 }
 
@@ -927,12 +956,14 @@ function move(delta){                       // delta en meses
 function bind(){
   document.getElementById("prev").addEventListener("click", () => move(-1));
   document.getElementById("next").addEventListener("click", () => move(1));
-  document.getElementById("today").addEventListener("click", () => { state.view = today(); render(); });
+  document.getElementById("today").addEventListener("click", () => {
+    state.view = { start: todayIso(), followsToday: true };
+    state.firstBookable = firstBookableIso();
+    render();
+  });
   document.getElementById("add").addEventListener("click", () => {
     openModal({ start: state.firstBookable, end: addDays(state.firstBookable, 1) });
   });
-  document.getElementById("month").addEventListener("change", e => { state.view.m = +e.target.value; render(); });
-  document.getElementById("year").addEventListener("change", e => { state.view.y = +e.target.value; render(); });
 
   // desplegable de familia: clic, teclado y cierre al perder foco
   document.getElementById("fs-trigger").addEventListener("click", () => toggleMenu());
@@ -995,6 +1026,9 @@ function bind(){
   // (el menú de familia es position:absolute, no se despega → no hace falta cerrarlo)
   window.addEventListener("scroll", () => { document.getElementById("pop").hidden = true; }, true);
   window.addEventListener("resize", () => { document.getElementById("pop").hidden = true; });
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") syncDailyPlanningWindow();
+  });
 }
 
 // ---------- Lock screen con clave familiar ----------
@@ -1105,8 +1139,9 @@ function setupLock(){
 }
 
 // ---------- Init ----------
-(async function main(){
+async function main(){
   try{
+    state.view = { start: todayIso(), followsToday: true };
     state.firstBookable = firstBookableIso();
     document.title += "  ·  v" + VERSION;   // marca en la pestaña para detectar caché
     bind();
@@ -1116,10 +1151,21 @@ function setupLock(){
     updateUndoBtn();
     updateAdminUI();
     setupLock();
+    clearInterval(state.rollingWindowHandle);
+    state.rollingWindowHandle = setInterval(syncDailyPlanningWindow, 60 * 1000);
     // el desplegable parte CERRADO; se abre/toca con la flecha (toggle confiable)
   }catch(err){
     console.error("Init error:", err);
     state.loadError = (err && err.message) ? err.message : String(err);
     render();
   }
-})();
+}
+
+if (typeof document !== "undefined") main();
+
+if (typeof module !== "undefined" && module.exports){
+  module.exports = {
+    reconcileRollingView,
+    rollingMonthWindow,
+  };
+}

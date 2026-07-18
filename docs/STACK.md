@@ -15,6 +15,11 @@ familiares permanecen exclusivamente en esta plataforma.
 La lista individual preserva fechas originales; sólo la vista compacta de
 bloqueos se recorta al horizonte de disponibilidad.
 
+El rango visible se deriva con funciones nativas de fecha y se reconcilia una
+vez por minuto mientras la pestaña está abierta. Son 31 fechas consecutivas en
+estado de presentación; no se añadió una dependencia de calendario ni un nuevo
+modelo persistente.
+
 El Linktree consume `/public-availability` con `fetch` y `cache: no-store`.
 Ese contrato consulta todos los grupos familiares, Airbnb y Booking, pero
 publica únicamente `blockedRanges`: no incluye `reservedRanges`, identidades

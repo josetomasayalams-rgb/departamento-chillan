@@ -11,6 +11,10 @@ sincronizar disponibilidad con Airbnb y Booking mediante iCal.
 
 ## Comportamiento de fechas
 
+La vista principal comienza hoy y muestra 31 días consecutivos, aunque el rango
+cruce al mes siguiente. Se desplaza automáticamente cada día. Las flechas recorren
+periodos de 31 días y `Desde hoy` vuelve al rango vigente y reactiva el seguimiento.
+
 Todas las reservas usan la convencion hotelera `[llegada, salida)`. Una reserva
 del 20 al 24 ocupa las noches 20, 21, 22 y 23; el dia 24 queda libre para otra
 llegada. Las reservas familiares se pueden crear, editar, eliminar y deshacer.

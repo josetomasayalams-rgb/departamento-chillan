@@ -29,6 +29,11 @@ Dominios puros: ical.ts | availability.ts
 
 El test `tests/architecture/boundary.test.mjs` verifica los imports de las capas ejecutables. No hay violaciones base; `known-violations.json` debe permanecer vacío.
 
+La ventana móvil pertenece a la capa Cliente: deriva 31 fechas desde un inicio,
+las alinea con la semana y vuelve a renderizar cuando cambia el día. No consulta
+el puerto ni la Edge Function para calcular el rango. La misma reconciliación
+actualiza `firstBookable` para conservar el margen de Airbnb.
+
 `/availability` es la frontera compartida con Operaciones. Publica las reservas
 particulares y los bloqueos de Airbnb/Booking como `reservedRanges`, además de
 `blockedRanges` y frescura usando fechas e identidades HMAC opacas; la plataforma
