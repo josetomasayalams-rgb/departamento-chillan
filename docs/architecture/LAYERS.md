@@ -32,7 +32,8 @@ El test `tests/architecture/boundary.test.mjs` verifica los imports de las capas
 La ventana móvil pertenece a la capa Cliente: deriva 30 fechas desde un inicio,
 las alinea con la semana y vuelve a renderizar cuando cambia el día. No consulta
 el puerto ni la Edge Function para calcular el rango. La misma reconciliación
-actualiza `firstBookable` para conservar el margen de Airbnb.
+actualiza `firstBookable` para conservar el margen de Airbnb. El borde y marcador
+dorados del día 1 son presentación pura; no existe una franja ni un estado mensual.
 
 `/availability` es la frontera compartida con Operaciones. Publica las reservas
 particulares y los bloqueos de Airbnb/Booking como `reservedRanges`, además de

@@ -24,7 +24,9 @@ La PWA proyecta reservas y bloqueos sobre una ventana móvil de 30 fechas
 consecutivas. `state.view.start` controla el inicio y `followsToday` permite que
 la vista avance con la fecha local; navegar manualmente pausa ese seguimiento
 hasta usar `Desde hoy`. El margen de Airbnb se recalcula en la misma reconciliación
-diaria. Esta proyección no modifica reservas ni eventos externos.
+diaria. Cuando el rango cruza a otro mes, la vista sólo marca el día 1 en dorado;
+no añade franjas ni tintes de fondo por mes. Esta proyección no modifica reservas
+ni eventos externos.
 
 Las reglas de dependencia y su verificación mecánica están en `docs/architecture/LAYERS.md`. El contrato de datos vive en `schema.sql` y las migraciones son la evolución canónica del esquema.
 
