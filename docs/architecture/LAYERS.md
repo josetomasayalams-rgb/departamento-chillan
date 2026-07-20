@@ -21,13 +21,17 @@ Dominios puros: ical.ts | availability.ts
 | Capa | Puede depender de | No puede depender de |
 | --- | --- | --- |
 | Presentación | Cliente mediante etiquetas HTML | Supabase ni almacenamiento directo |
-| Cliente | APIs web y cliente Supabase remoto | módulos locales nuevos o la Edge Function |
+| Cliente | APIs web, sesión Google y cliente Supabase remoto | módulos locales nuevos o la Edge Function |
 | Puerto `state.store` | adaptador activo | DOM |
 | Edge HTTP | paquetes Deno, `ical.ts`, `availability.ts`, Supabase | código de la PWA |
 | Dominio iCal | paquetes Deno | HTTP, DOM o Supabase |
 | Dominio de disponibilidad | APIs estándar de JavaScript | HTTP, DOM, Supabase o paquetes externos |
 
 El test `tests/architecture/boundary.test.mjs` verifica los imports de las capas ejecutables. No hay violaciones base; `known-violations.json` debe permanecer vacío.
+
+La compuerta de identidad pertenece a la composición de `initStore()`: valida la
+sesión antes de construir el adaptador remoto. Las vistas y eventos siguen usando
+solo `state.store`; no consultan Auth ni Supabase directamente.
 
 La ventana móvil pertenece a la capa Cliente: deriva 30 fechas desde un inicio,
 las alinea con la semana y vuelve a renderizar cuando cambia el día. No consulta

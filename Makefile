@@ -5,7 +5,7 @@ lint:
 
 test:
 	node --check app.js
-	node --test tests/architecture/boundary.test.mjs tests/rolling-window.test.mjs
+	node --test tests/architecture/boundary.test.mjs tests/rolling-window.test.mjs tests/security-hardening.test.mjs
 
 edge-test:
 	npx -y deno test --allow-read --allow-env supabase/functions/calendar-ical/

@@ -13,3 +13,6 @@ calendario.html
 # Estado local de Supabase CLI
 supabase/.branches/
 supabase/.temp/
+
+# Exportaciones privadas de recuperación; nunca se versionan.
+backups/

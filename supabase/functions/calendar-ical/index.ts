@@ -107,6 +107,7 @@ async function loadAvailability(
   });
   let reservationsQuery = supabase.from("reservations")
     .select("id,family_id,start_date,end_date")
+    .is("deleted_at", null)
     .lt("start_date", window.to)
     .gt("end_date", window.from)
     .order("start_date");
@@ -198,6 +199,7 @@ async function serveFamilyFeed(): Promise<Response> {
   const { data, error } = await supabase
     .from("reservations")
     .select("id,start_date,end_date,created_at")
+    .is("deleted_at", null)
     .order("start_date");
 
   if (error) {
