@@ -40,7 +40,11 @@ const CONFIG = {
   airbnbMarginDays: 4,   // primer día reservable = hoy + N (margen Airbnb)
 };
 
-const VERSION = "27";  // marca visible (pestaña + badge) para detectar si hay caché
+const VERSION = "28";  // marca visible (pestaña + badge) para detectar si hay caché
+const AUTHORIZED_EMAILS = new Set([
+  "josetomasayalams@gmail.com",
+  "scamussotomayor@gmail.com",
+]);
 const MON_SHORT = ["ene","feb","mar","abr","may","jun","jul","ago","sep","oct","nov","dic"];
 const WD = ["Lun","Mar","Mié","Jue","Vie","Sáb","Dom"];
 const CHECKIN_TIME = "15:00";
@@ -230,6 +234,55 @@ function localStore(){
   };
 }
 
+function unavailableStore(reason){
+  const fail = async () => { throw new Error(reason); };
+  return {
+    async all(){ return { reservations:[], externalEvents:[], syncStatus:[] }; },
+    add:fail,
+    remove:fail,
+    update:fail,
+    markVerified:fail,
+    onChange(){ return () => {}; },
+  };
+}
+
+function showAuthGate(sb, message, denied=false){
+  const gate = document.getElementById("auth-gate");
+  const detail = document.getElementById("auth-detail");
+  const button = document.getElementById("auth-google");
+  if (!gate || !detail || !button) return;
+  detail.textContent = message;
+  gate.hidden = false;
+  gate.classList.toggle("denied", denied);
+  button.textContent = denied ? "Ingresar con otra cuenta" : "Ingresar con Google";
+  button.onclick = async () => {
+    await sb.auth.signOut({ scope:"local" });
+    const { error } = await sb.auth.signInWithOAuth({
+      provider:"google",
+      options:{ redirectTo:`${location.origin}${location.pathname}` },
+    });
+    if (error) detail.textContent = `No se pudo iniciar sesión: ${error.message}`;
+  };
+}
+
+async function requireAuthorizedSession(sb){
+  const { data, error } = await sb.auth.getSession();
+  if (error) throw error;
+  const email = data.session?.user?.email?.trim().toLowerCase() || "";
+  if (!email){
+    showAuthGate(sb, "Inicia sesión con una de las dos cuentas administradoras.");
+    return false;
+  }
+  if (!AUTHORIZED_EMAILS.has(email)){
+    await sb.auth.signOut({ scope:"local" });
+    showAuthGate(sb, "Esta cuenta no tiene permiso para modificar el calendario.", true);
+    return false;
+  }
+  const gate = document.getElementById("auth-gate");
+  if (gate) gate.hidden = true;
+  return true;
+}
+
 async function initStore(){
   const badge = document.getElementById("mode-badge");
   let live = false, configuredButFailed = false;
@@ -238,10 +291,16 @@ async function initStore(){
     try{
       const { createClient } = await import("https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm");
       const sb = createClient(CONFIG.supabaseUrl, CONFIG.supabaseAnonKey);
+      if (!await requireAuthorizedSession(sb)){
+        state.store = unavailableStore("Autenticación requerida");
+        state.loadError = "Autenticación requerida";
+        updateModeBadge();
+        return;
+      }
       state.store = {
         async all(){
           const [reservations, externalEvents, syncStatus] = await Promise.all([
-            sb.from("reservations").select("*").order("start_date"),
+            sb.from("reservations").select("*").is("deleted_at", null).order("start_date"),
             sb.from("external_calendar_events").select("source,external_uid,start_date,end_date,last_seen_at").order("start_date"),
             sb.from("calendar_sync_status").select("source,last_success_at,status,event_count,error_message"),
           ]);
@@ -254,14 +313,15 @@ async function initStore(){
             syncStatus: syncStatus.data || [],
           };
         },
-        async add(recs){ const { error } = await sb.from("reservations").insert(recs); if (error) throw error; },
-        async remove(id){ const { error } = await sb.from("reservations").delete().eq("id", id); if (error) throw error; },
-        async update(id, changes){ const { error } = await sb.from("reservations").update(changes).eq("id", id); if (error) throw error; },
+        async add(recs){ const { error } = await sb.from("reservations").upsert(recs.map(rec => ({ ...rec, deleted_at:null }))); if (error) throw error; },
+        async remove(id){ const { error } = await sb.from("reservations").update({ deleted_at:nowIso() }).eq("id", id); if (error) throw error; },
+        async update(id, changes){ const { error } = await sb.from("reservations").update({ ...changes, deleted_at:null }).eq("id", id); if (error) throw error; },
         async markVerified(version, target){
           const field = `${target}_verified_at`;
           const { error } = await sb.from("reservations")
             .update({ [field]:nowIso() })
-            .eq("availability_version", version);
+            .eq("availability_version", version)
+            .is("deleted_at", null);
           if (error) throw error;
         },
         onChange(cb){
@@ -274,12 +334,13 @@ async function initStore(){
       };
       live = true;
     }catch(err){
-      // CDN bloqueado / sin red / claves malas → caer a modo local en vez de morir
-      console.error("Supabase init falló, usando modo local:", err);
+      // Con backend configurado se falla cerrado: no crear datos divergentes locales.
+      console.error("Supabase init falló:", err);
       configuredButFailed = true;
+      state.store = unavailableStore("No se pudo conectar al calendario compartido");
     }
   }
-  if (!live) state.store = localStore();
+  if (!state.store) state.store = localStore();
 
   state.live = live;
   state.loadError = configuredButFailed ? "No se pudo conectar a Supabase" : null;

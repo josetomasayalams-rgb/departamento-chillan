@@ -2,7 +2,10 @@
 
 ## Límites de acceso
 
-La PWA usa un cliente público de Supabase y está diseñada para un grupo familiar de confianza. Las políticas actuales permiten las operaciones necesarias desde ese cliente; cualquier endurecimiento debe incluir un diseño de autenticación que preserve el uso compartido previsto.
+La PWA usa Google Auth de Supabase. Solo los correos activos de `calendar_admins`
+pueden leer o modificar reservas privadas; las políticas RLS vuelven a comprobar
+esa autorización en el servidor. El cliente nunca convierte una sesión ausente o
+no autorizada en escritura local silenciosa.
 
 ## Secretos
 
@@ -15,6 +18,8 @@ La PWA usa un cliente público de Supabase y está diseñada para un grupo famil
 | Riesgo | Control actual |
 | --- | --- |
 | Fuga de detalles familiares por iCal | El feed publica solo “No disponible” |
+| Escritura anónima o de un tercer correo | RLS exige `authenticated` y allowlist; `anon` no tiene permisos de escritura sobre ninguna tabla fuente |
+| Pérdida por borrado | `deleted_at` oculta la fila y el trigger append-only conserva actor y versiones |
 | Fuga de proveedor o huésped hacia Operaciones | `/availability` publica sólo reservas particulares y fechas externas con un identificador HMAC opaco; nunca fuente, UID, familia, huésped, notas ni URL |
 | Fuga de identidad hacia el Linktree | `/public-availability` incluye todas las ocupaciones, pero solo publica rangos consolidados sin identificadores ni fuente |
 | Fallo de un proveedor externo | La sincronización conserva el último conjunto válido |

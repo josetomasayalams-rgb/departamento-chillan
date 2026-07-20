@@ -6,7 +6,8 @@ La PWA estática debe seguir disponible aunque Supabase o un proveedor iCal fall
 
 | Falla | Comportamiento esperado | Verificación |
 | --- | --- | --- |
-| Supabase no configurado | La PWA usa `localStorage` | Crear y recargar una reserva local |
+| Supabase no configurado | La PWA usa `localStorage` y avisa que no publica externamente | Crear y recargar una reserva local |
+| Supabase configurado sin sesión válida | Falla cerrada: no permite escrituras locales divergentes | Cerrar sesión e intentar crear |
 | Descarga iCal falla | Se conserva el último conjunto válido de esa fuente | Revisar el estado de sincronización |
 | Feed familiar falla | Respuesta controlada sin detalles internos | Confirmar estado HTTP y cuerpo genérico |
 | Una fuente externa falla | La otra fuente se procesa de forma independiente | Probar resultados por proveedor |
@@ -17,6 +18,8 @@ La PWA estática debe seguir disponible aunque Supabase o un proveedor iCal fall
 - El reemplazo de eventos se realiza por fuente y de forma atómica.
 - Los errores se sanitizan antes de registrarse o devolverse.
 - La recuperación es reintentar la sincronización; no se borran datos válidos por un fallo remoto.
+- Los borrados de reservas son lógicos y el historial append-only conserva versión previa/nueva y actor.
+- Solo los dos administradores de `calendar_admins` pueden leer o escribir reservas privadas; iCal y disponibilidad usan service role y devuelven contratos sanitizados.
 
 ## Cambios de riesgo
 

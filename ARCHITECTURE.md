@@ -13,7 +13,7 @@ La plataforma combina una PWA estática y una Edge Function de sincronización; 
 ## Flujo principal
 
 ```text
-Usuario → PWA (`app.js`) → `state.store` → localStorage | Supabase
+Usuario → Google Auth → PWA (`app.js`) → `state.store` → localStorage | Supabase con RLS
 Airbnb/Booking → Edge Function → external_calendar_events → PWA
 Supabase reservations → Edge Function → feed iCal público
 reservations(family_id=particular) + external_calendar_events → /availability → Operaciones (identidad opaca + fechas)
@@ -27,6 +27,12 @@ hasta usar `Desde hoy`. El margen de Airbnb se recalcula en la misma reconciliac
 diaria. Cuando el rango cruza a otro mes, la vista sólo marca el día 1 en dorado;
 no añade franjas ni tintes de fondo por mes. Esta proyección no modifica reservas
 ni eventos externos.
+
+Cuando Supabase está configurado, la composición exige una sesión Google cuyo
+correo pertenezca a `calendar_admins`. Un fallo de identidad no cambia al
+adaptador local: la escritura queda cerrada para evitar dos calendarios divergentes.
+El modo `localStorage` existe únicamente para una instalación deliberadamente
+no conectada y avisa que no publica en Airbnb ni Booking.
 
 La proyección visual incluye la fecha exclusiva de salida únicamente para mostrar
 `Check-out 12:00`, mientras `Check-in 15:00` identifica la llegada. Esto no cambia
