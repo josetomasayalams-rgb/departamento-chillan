@@ -14,6 +14,7 @@ const {
   reservationVisibleOnDate,
   rollingMonthWindow,
 } = app;
+const stylesSource = fs.readFileSync("styles.css", "utf8");
 
 test("oculta bloqueos que vuelven desde Airbnb o Booking cuando ya existe la reserva familiar", () => {
   const reservations = [
@@ -51,6 +52,14 @@ test("distingue sincronización en vivo, atrasada e incompleta", () => {
   assert.equal(calendarSyncView(current, now).status, "live");
   assert.equal(calendarSyncView(current, now + 60 * 60 * 1000).status, "stale");
   assert.equal(calendarSyncView(current.slice(0, 1), now).status, "unavailable");
+});
+
+test("mantiene visible la sincronización en la navegación móvil", () => {
+  assert.match(
+    stylesSource,
+    /\.nav \.btn:not\(\.icon\):not\(\.primary\):not\(#today\):not\(#sync-now\):not\(#undo\)\{ display:none; \}/,
+  );
+  assert.match(stylesSource, /\.nav #sync-now\{ grid-column:1 \/ span 2; grid-row:3; width:100%; \}/);
 });
 
 test("construye una planificación de 30 días que cruza al mes siguiente", () => {

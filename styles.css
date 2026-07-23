@@ -475,7 +475,7 @@ body.locked .app{
 }
 
 @media (max-width:560px){
-  .nav .btn:not(.icon):not(.primary):not(#today):not(#undo){ display:none; } /* deja ‹ › Hoy + Reserva + Deshacer en móvil */
+  .nav .btn:not(.icon):not(.primary):not(#today):not(#sync-now):not(#undo){ display:none; } /* deja ‹ › Hoy + Reserva + Sincronizar + Deshacer en móvil */
   .title h1{ font-size:20px; }
   .weekdays div, .cell .num{ font-size:10px; }
   .seg{ font-size:0; padding:0; height:10px; }
