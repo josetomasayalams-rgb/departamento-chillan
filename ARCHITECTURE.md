@@ -8,12 +8,13 @@ La plataforma combina una PWA estática y una Edge Function de sincronización; 
 - **Bloqueos externos:** conserva eventos importados de Airbnb y Booking como solo lectura.
 - **Feed operativo:** publica sólo reservas particulares y bloqueos externos,
   sin nombres ni notas privadas.
-- **Sincronización:** actualiza fuentes externas de forma atómica y mantiene el último estado válido ante errores.
+- **Sincronización:** actualiza fuentes externas de forma atómica, permite
+  solicitar un ciclo manual y mantiene el último estado válido ante errores.
 
 ## Flujo principal
 
 ```text
-Usuario → Google Auth → PWA (`app.js`) → `state.store` → localStorage | Supabase con RLS
+Usuario → clave familiar → PWA (`app.js`) → `state.store` → localStorage | Supabase con RLS
 Airbnb/Booking → Edge Function → external_calendar_events → PWA
 Supabase reservations → Edge Function → feed iCal público
 reservations(family_id=particular) + external_calendar_events → /availability → Operaciones (identidad opaca + fechas)
@@ -28,9 +29,10 @@ diaria. Cuando el rango cruza a otro mes, la vista sólo marca el día 1 en dora
 no añade franjas ni tintes de fondo por mes. Esta proyección no modifica reservas
 ni eventos externos.
 
-Cuando Supabase está configurado, la composición exige una sesión Google cuyo
-correo pertenezca a `calendar_admins`. Un fallo de identidad no cambia al
-adaptador local: la escritura queda cerrada para evitar dos calendarios divergentes.
+Cuando Supabase está configurado, la composición usa la clave familiar como
+compuerta de interacción y el rol anónimo del cliente para el calendario
+compartido. Un fallo de conexión no cambia al adaptador local: la escritura
+queda cerrada para evitar dos calendarios divergentes.
 El modo `localStorage` existe únicamente para una instalación deliberadamente
 no conectada y avisa que no publica en Airbnb ni Booking.
 
@@ -49,6 +51,15 @@ solo recibe fechas y un identificador opaco estable, derivado mediante HMAC, par
 representar cada estadía como “Reserva” y detectar cambios sin conocer su origen.
 Las estadías individuales conservan su check-in original mientras estén activas;
 el recorte a la ventana se aplica únicamente a los rangos compactos de bloqueo.
+Antes de construir ambos contratos, la Edge Function retira eventos externos
+que coinciden con una reserva familiar y colapsa duplicados de proveedor. El
+cliente aplica la misma defensa al renderizar. Los cruces parciales no se borran
+automáticamente: se señalan para que una persona corrija la reserva equivocada.
+
+El botón **Sincronizar** invoca una RPC limitada que reutiliza
+`invoke_calendar_ical_sync()` y su secreto guardado en Vault; el navegador nunca
+recibe ese secreto. Después vuelve a consultar Airbnb, Booking y el feed familiar,
+y muestra la hora del último ciclo correcto.
 
 El Linktree usa una frontera distinta: `/public-availability` incluye todas las
 reservas familiares para bloquear el inmueble de inmediato, pero elimina

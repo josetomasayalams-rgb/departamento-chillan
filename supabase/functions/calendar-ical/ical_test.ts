@@ -3,7 +3,7 @@ import {
   assertFalse,
   assertStringIncludes,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
-import { buildFamilyCalendar, parseExternalCalendar } from "./ical.ts";
+import { buildFamilyCalendar, isFamilyFeedUid, parseExternalCalendar } from "./ical.ts";
 
 Deno.test("family feed uses exclusive checkout dates and hides private data", () => {
   const privateReservation = {
@@ -55,4 +55,18 @@ Deno.test("cancelled external events are ignored", async () => {
   assertEquals(events.length, 1);
   assertEquals(events[0].external_uid.length, "booking:".length + 64);
   assertFalse(events[0].external_uid.includes("booking-fixture-active"));
+});
+
+Deno.test("events originating in the family feed are not imported back", async () => {
+  const body = `BEGIN:VCALENDAR
+VERSION:2.0
+BEGIN:VEVENT
+UID:reserva-familiar-123e4567-e89b-12d3-a456-426614174000@departamento-chillan
+DTSTART;VALUE=DATE:20260801
+DTEND;VALUE=DATE:20260803
+SUMMARY:No disponible
+END:VEVENT
+END:VCALENDAR`;
+  assertEquals(isFamilyFeedUid("reserva-familiar-123e4567-e89b-12d3-a456-426614174000@departamento-chillan"), true);
+  assertEquals(await parseExternalCalendar(body, "airbnb"), []);
 });

@@ -40,17 +40,12 @@ const CONFIG = {
   airbnbMarginDays: 4,   // primer día reservable = hoy + N (margen Airbnb)
 };
 
-const VERSION = "28";  // marca visible (pestaña + badge) para detectar si hay caché
-const AUTHORIZED_EMAILS = new Set([
-  "josetomasayalams@gmail.com",
-  "scamussotomayor@gmail.com",
-]);
+const VERSION = "30";  // marca visible (pestaña + badge) para detectar si hay caché
 const MON_SHORT = ["ene","feb","mar","abr","may","jun","jul","ago","sep","oct","nov","dic"];
 const WD = ["Lun","Mar","Mié","Jue","Vie","Sáb","Dom"];
 const CHECKIN_TIME = "15:00";
 const CHECKOUT_TIME = "12:00";
 const LS_KEY = "chillan-reservations";
-const LS_LOCK = "chillan-lock-enabled";   // "true" = pedir clave al cargar, "false" = no
 const MAX_DATE = `${CONFIG.yearMax}-12-31`;   // tope de fechas reservables
 
 // ---------- Estado ----------
@@ -65,10 +60,10 @@ const state = {
   selectionError: null,
   live: false,
   admin: false,        // modo admin: fechas sin restricción + multi-familia
-  lockEnabled: true,   // se carga desde localStorage en setupLock()
   firstBookable: null,
   loadError: null,
   feedChecks: new Map(),
+  syncing: false,
   menuIdx: 0,
   undo: [],          // pila de inversas (máx 7) para Deshacer
   rollingWindowHandle: null,
@@ -149,6 +144,59 @@ function sourceInfo(source){
   return CONFIG.externalSources[source] || { name:"Externo", color:"#64748B" };
 }
 function overlaps(aStart, aEnd, bStart, bEnd){ return aStart < bEnd && aEnd > bStart; }
+function reservationRangeKey(item){
+  return `${item?.start_date || ""}|${item?.end_date || ""}`;
+}
+function externalEventsWithoutFamilyMirrors(reservations, externalEvents){
+  const familyRanges = new Set((reservations || []).map(reservationRangeKey));
+  const seenRanges = new Set();
+  return [...(externalEvents || [])]
+    .sort((left, right) =>
+      (left.start_date || "").localeCompare(right.start_date || "") ||
+      (left.end_date || "").localeCompare(right.end_date || "") ||
+      (left.source || "").localeCompare(right.source || "")
+    )
+    .filter(event => {
+      const key = reservationRangeKey(event);
+      if (!event?.start_date || !event?.end_date || familyRanges.has(key) || seenRanges.has(key)) return false;
+      seenRanges.add(key);
+      return true;
+    });
+}
+function crossCalendarConflicts(reservations, externalEvents){
+  return (reservations || []).flatMap(reservation =>
+    (externalEvents || [])
+      .filter(event => overlaps(
+        reservation.start_date,
+        reservation.end_date,
+        event.start_date,
+        event.end_date,
+      ))
+      .map(event => ({ reservation, event }))
+  );
+}
+function calendarSyncView(syncStatus, now=Date.now()){
+  const required = ["airbnb", "booking"].map(source =>
+    (syncStatus || []).find(item => item.source === source)
+  );
+  if (required.some(item => !item)) {
+    return { status:"unavailable", lastSuccessAt:null, detail:"Falta el estado de Airbnb o Booking" };
+  }
+  const successes = required.map(item => Date.parse(item.last_success_at || ""));
+  if (successes.some(value => !Number.isFinite(value))) {
+    return { status:"unavailable", lastSuccessAt:null, detail:"Aún no existe una sincronización completa" };
+  }
+  const oldestSuccess = Math.min(...successes);
+  const failed = required.filter(item => item.status !== "ok");
+  const stale = now - oldestSuccess > 45 * 60 * 1000;
+  return {
+    status: failed.length || stale ? "stale" : "live",
+    lastSuccessAt:new Date(oldestSuccess).toISOString(),
+    detail:failed.length
+      ? `${failed.map(item => sourceInfo(item.source).name).join(" y ")} requieren revisión`
+      : stale ? "La última sincronización tiene más de 45 minutos" : "Airbnb y Booking están al día",
+  };
+}
 function findConflict(start, end, ignoreId = null){
   const familyConflict = state.reservations.find(r =>
     r.id !== ignoreId && overlaps(start, end, r.start_date, r.end_date));
@@ -230,6 +278,7 @@ function localStore(){
         r.availability_version === version ? { ...r, [field]:nowIso() } : r
       )));
     },
+    async requestSync(){ return { accepted:false, reason:"local" }; },
     onChange(cb){ window.addEventListener("storage", e => { if (e.key === LS_KEY) cb(); }); },
   };
 }
@@ -242,45 +291,9 @@ function unavailableStore(reason){
     remove:fail,
     update:fail,
     markVerified:fail,
+    requestSync:fail,
     onChange(){ return () => {}; },
   };
-}
-
-function showAuthGate(sb, message, denied=false){
-  const gate = document.getElementById("auth-gate");
-  const detail = document.getElementById("auth-detail");
-  const button = document.getElementById("auth-google");
-  if (!gate || !detail || !button) return;
-  detail.textContent = message;
-  gate.hidden = false;
-  gate.classList.toggle("denied", denied);
-  button.textContent = denied ? "Ingresar con otra cuenta" : "Ingresar con Google";
-  button.onclick = async () => {
-    await sb.auth.signOut({ scope:"local" });
-    const { error } = await sb.auth.signInWithOAuth({
-      provider:"google",
-      options:{ redirectTo:`${location.origin}${location.pathname}` },
-    });
-    if (error) detail.textContent = `No se pudo iniciar sesión: ${error.message}`;
-  };
-}
-
-async function requireAuthorizedSession(sb){
-  const { data, error } = await sb.auth.getSession();
-  if (error) throw error;
-  const email = data.session?.user?.email?.trim().toLowerCase() || "";
-  if (!email){
-    showAuthGate(sb, "Inicia sesión con una de las dos cuentas administradoras.");
-    return false;
-  }
-  if (!AUTHORIZED_EMAILS.has(email)){
-    await sb.auth.signOut({ scope:"local" });
-    showAuthGate(sb, "Esta cuenta no tiene permiso para modificar el calendario.", true);
-    return false;
-  }
-  const gate = document.getElementById("auth-gate");
-  if (gate) gate.hidden = true;
-  return true;
 }
 
 async function initStore(){
@@ -291,18 +304,12 @@ async function initStore(){
     try{
       const { createClient } = await import("https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm");
       const sb = createClient(CONFIG.supabaseUrl, CONFIG.supabaseAnonKey);
-      if (!await requireAuthorizedSession(sb)){
-        state.store = unavailableStore("Autenticación requerida");
-        state.loadError = "Autenticación requerida";
-        updateModeBadge();
-        return;
-      }
       state.store = {
         async all(){
           const [reservations, externalEvents, syncStatus] = await Promise.all([
             sb.from("reservations").select("*").is("deleted_at", null).order("start_date"),
             sb.from("external_calendar_events").select("source,external_uid,start_date,end_date,last_seen_at").order("start_date"),
-            sb.from("calendar_sync_status").select("source,last_success_at,status,event_count,error_message"),
+            sb.from("calendar_sync_status").select("source,last_success_at,last_attempt_at,status,event_count,error_message"),
           ]);
           if (reservations.error) throw reservations.error;
           if (externalEvents.error) throw externalEvents.error;
@@ -323,6 +330,11 @@ async function initStore(){
             .eq("availability_version", version)
             .is("deleted_at", null);
           if (error) throw error;
+        },
+        async requestSync(){
+          const { data, error } = await sb.rpc("request_calendar_ical_sync");
+          if (error) throw error;
+          return data || { accepted:true };
         },
         onChange(cb){
           sb.channel("family-calendar")
@@ -358,7 +370,7 @@ async function load(){
   try{
     const data = await state.store.all();
     state.reservations = data.reservations;
-    state.externalEvents = data.externalEvents;
+    state.externalEvents = externalEventsWithoutFamilyMirrors(data.reservations, data.externalEvents);
     state.syncStatus = data.syncStatus;
     state.loadError = null;
   }catch(err){
@@ -366,6 +378,7 @@ async function load(){
     state.loadError = (err && err.message) ? err.message : String(err);
   }
   updateModeBadge();
+  updateSyncUI();
   render();   // siempre renderiza (con lo último que tenga) y muestra el error si hubo
   schedulePendingFeedChecks();
 }
@@ -422,6 +435,83 @@ function updateModeBadge(){
   badge.title = failedSources.map(item => `${sourceInfo(item.source).name}: ${item.error_message || "error"}`).join("\n");
 }
 
+function updateSyncUI(){
+  const badge = document.getElementById("sync-badge");
+  const button = document.getElementById("sync-now");
+  if (!badge || !button) return;
+  button.disabled = state.syncing || !state.live;
+  button.textContent = state.syncing ? "Sincronizando…" : "↻ Sincronizar";
+  badge.classList.remove("live", "warn");
+  if (state.syncing){
+    badge.textContent = "↻ Consultando Airbnb, Booking y el feed familiar…";
+    return;
+  }
+  if (!state.live){
+    badge.textContent = "○ Sin publicación externa en modo local";
+    badge.classList.add("warn");
+    return;
+  }
+  const view = calendarSyncView(state.syncStatus);
+  const conflicts = crossCalendarConflicts(state.reservations, state.externalEvents);
+  if (conflicts.length){
+    badge.classList.add("warn");
+    badge.textContent = `⚠ ${conflicts.length} cruce entre calendarios · revisar`;
+    badge.title = "Una reserva familiar se cruza con Airbnb o Booking. Sincronizar no elimina el cruce: hay que corregir una de las reservas en su origen.";
+    return;
+  }
+  badge.classList.toggle("live", view.status === "live");
+  badge.classList.toggle("warn", view.status !== "live");
+  badge.textContent = view.status === "live"
+    ? `● En vivo · última sincronización ${formatSyncTime(view.lastSuccessAt)}`
+    : `⚠ ${view.detail}`;
+  badge.title = view.status === "live"
+    ? "Airbnb y Booking se importaron correctamente. Las reservas familiares se publican en el feed iCal."
+    : view.detail;
+}
+
+function latestSyncAttempt(){
+  const attempts = state.syncStatus
+    .map(item => Date.parse(item.last_attempt_at || ""))
+    .filter(Number.isFinite);
+  return attempts.length ? Math.max(...attempts) : 0;
+}
+
+function wait(milliseconds){
+  return new Promise(resolve => setTimeout(resolve, milliseconds));
+}
+
+async function synchronizeCalendars(){
+  if (state.syncing || !state.live) return;
+  state.syncing = true;
+  updateSyncUI();
+  const previousAttempt = latestSyncAttempt();
+  try{
+    const request = await state.store.requestSync();
+    const shouldPoll = request?.accepted !== false;
+    for (let attempt = 0; attempt < (shouldPoll ? 8 : 1); attempt += 1){
+      await wait(attempt === 0 ? 500 : 1000);
+      await load();
+      if (!shouldPoll || latestSyncAttempt() > previousAttempt) break;
+    }
+    const versions = [...new Set(state.reservations
+      .filter(reservation => reservation.availability_version && !reservation.feed_verified_at)
+      .map(reservation => reservation.availability_version))];
+    for (const version of versions) await verifyFeedPublication(version);
+    const view = calendarSyncView(state.syncStatus);
+    const conflicts = crossCalendarConflicts(state.reservations, state.externalEvents);
+    alert(conflicts.length
+      ? `La sincronización terminó, pero hay ${conflicts.length} cruce entre una reserva familiar y Airbnb o Booking. Revisa las fechas en el calendario y corrige la reserva equivocada en su origen.`
+      : view.status === "live"
+      ? `Sincronización lista. Airbnb y Booking fueron consultados por última vez el ${formatSyncTime(view.lastSuccessAt)}. El feed familiar también fue comprobado.`
+      : `La revisión terminó, pero requiere atención: ${view.detail}.`);
+  }catch(err){
+    alert("No se pudo completar la sincronización: " + ((err && err.message) || String(err)));
+  }finally{
+    state.syncing = false;
+    updateSyncUI();
+  }
+}
+
 // En dispositivos sin hover (touch) no bindeamos mouseenter/mouseleave: la
 // preview de brush por hover es desktop-only. En touch el brush-bar muestra
 // el rango y se actualiza por onCellClick → render.
@@ -433,6 +523,7 @@ function render(){
   updateHintBar();
   updateBrushBar();
   updatePreview();
+  updateSyncUI();
 }
 
 // Contenido estático que no cambia: se arma una sola vez al iniciar.
@@ -766,8 +857,6 @@ function updateAdminUI(){
     btn.textContent = state.admin ? "🔓 Admin ON" : "🔒 Admin";
     btn.classList.toggle("on", state.admin);
   }
-  const lockBtn = document.getElementById("lock-toggle");
-  if (lockBtn) lockBtn.hidden = !state.admin;
   document.body.classList.toggle("admin-mode", state.admin);
   renderReservationOptions();
 }
@@ -1065,7 +1154,7 @@ function bind(){
   document.getElementById("brush-confirm").addEventListener("click", confirmBrush);
   document.getElementById("undo").addEventListener("click", doUndo);
   document.getElementById("admin").addEventListener("click", toggleAdmin);
-  document.getElementById("lock-toggle").addEventListener("click", () => setLockEnabled(!state.lockEnabled));
+  document.getElementById("sync-now").addEventListener("click", synchronizeCalendars);
   document.getElementById("brush-cancel").addEventListener("click", cancelSelection);
 
   document.getElementById("cancel").addEventListener("click", closeModal);
@@ -1117,45 +1206,21 @@ function bind(){
   window.addEventListener("scroll", () => { document.getElementById("pop").hidden = true; }, true);
   window.addEventListener("resize", () => { document.getElementById("pop").hidden = true; });
   document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "visible") syncDailyPlanningWindow();
+    if (document.visibilityState === "visible"){
+      syncDailyPlanningWindow();
+      load();
+    }
   });
 }
 
 // ---------- Lock screen con clave familiar ----------
-// Persistencia: state.lockEnabled se guarda en localStorage[LS_LOCK].
-// Default: true (se pide clave al cargar). Admin puede cambiarlo desde el footer.
-function isLockEnabled(){
-  return localStorage.getItem(LS_LOCK) !== "false";
-}
-function setLockEnabled(enabled){
-  state.lockEnabled = enabled;
-  localStorage.setItem(LS_LOCK, enabled ? "true" : "false");
-  applyLockState();
-  updateLockToggleBtn();
-}
 function applyLockState(){
   const lock = document.getElementById("lock");
   if (!lock) return;
-  if (state.lockEnabled){
-    lock.hidden = false;
-    document.body.classList.add("locked");
-    const first = document.querySelector("#lock-pins .lock-pin");
-    if (first) first.focus();
-  } else {
-    lock.hidden = true;
-    document.body.classList.remove("locked");
-  }
-}
-function updateLockToggleBtn(){
-  const btn = document.getElementById("lock-toggle");
-  if (!btn) return;
-  const on = state.lockEnabled;
-  btn.textContent = on ? "🔒 Clave ON" : "🔓 Clave OFF";
-  btn.title = on
-    ? "Click para desactivar la clave de inicio"
-    : "Click para reactivar la clave de inicio";
-  btn.classList.toggle("on", on);
-  btn.classList.toggle("off", !on);
+  lock.hidden = false;
+  document.body.classList.add("locked");
+  const first = document.querySelector("#lock-pins .lock-pin");
+  if (first) first.focus();
 }
 
 function setupLock(){
@@ -1165,10 +1230,8 @@ function setupLock(){
   const err = document.getElementById("lock-err");
   if (!lock || pins.length !== 4) return;
 
-  // Lee preferencia persistida y aplica estado (muestra/oculta lock).
-  state.lockEnabled = isLockEnabled();
+  // La clave familiar es siempre obligatoria al abrir la plataforma.
   applyLockState();
-  updateLockToggleBtn();
 
   function getCode(){ return pins.map(p => p.value).join(""); }
   function clearPins(){
@@ -1261,5 +1324,8 @@ if (typeof module !== "undefined" && module.exports){
     reservationTimingForDate,
     reservationVisibleOnDate,
     rollingMonthWindow,
+    calendarSyncView,
+    externalEventsWithoutFamilyMirrors,
+    crossCalendarConflicts,
   };
 }

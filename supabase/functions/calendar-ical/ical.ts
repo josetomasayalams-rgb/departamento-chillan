@@ -61,6 +61,12 @@ async function hashedUid(source: CalendarSource, uid: string): Promise<string> {
   return `${source}:${hex}`;
 }
 
+export function isFamilyFeedUid(uid: string): boolean {
+  return /^reserva-familiar-[0-9a-f-]+@departamento-chillan$/i.test(
+    String(uid || "").trim(),
+  );
+}
+
 export function buildFamilyCalendar(reservations: FamilyReservation[]): string {
   const calendar = ical({
     name: "Disponibilidad Departamento Chillan",
@@ -110,6 +116,7 @@ export async function parseExternalCalendar(
       : addDays(startDate, 1);
     const normalizedEnd = endDate > startDate ? endDate : addDays(startDate, 1);
     const uid = String(component.uid || fallbackUid || `${startDate}-${normalizedEnd}`);
+    if (isFamilyFeedUid(uid)) continue;
 
     events.push({
       external_uid: await hashedUid(source, uid),

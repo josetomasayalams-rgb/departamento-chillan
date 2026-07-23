@@ -4,6 +4,8 @@
 
 Proteger escrituras con Google Auth, conservar eliminaciones recuperables y registrar historial append-only sin exponer PII en iCal o disponibilidad pública.
 
+> Sustituido el 2026-07-21 por acceso familiar exclusivo con clave `9014`; se retiró Google OAuth por decisión operativa.
+
 ## Progreso
 
 - [x] 2026-07-20: Se respaldaron esquema y datos productivos antes de cambiar políticas.

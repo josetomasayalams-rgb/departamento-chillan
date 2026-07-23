@@ -207,6 +207,21 @@ create policy "calendar admins delete reservations"
 revoke all on public.reservations from anon;
 grant select, insert, update, delete on public.reservations to authenticated;
 
+-- Family access: the static PWA uses its mandatory PIN screen instead of OAuth.
+drop policy if exists "calendar admins read reservations" on public.reservations;
+drop policy if exists "calendar admins insert reservations" on public.reservations;
+drop policy if exists "calendar admins update reservations" on public.reservations;
+drop policy if exists "calendar admins delete reservations" on public.reservations;
+
+create policy "family app reads reservations"
+  on public.reservations for select to anon using (true);
+create policy "family app inserts reservations"
+  on public.reservations for insert to anon with check (true);
+create policy "family app updates reservations"
+  on public.reservations for update to anon using (true) with check (true);
+
+grant select, insert, update on public.reservations to anon;
+
 grant all on reservations to service_role;
 
 -- Tiempo real: que los cambios se reflejen en todos los dispositivos

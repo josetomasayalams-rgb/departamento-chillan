@@ -3,7 +3,7 @@
 - El navegador carga `app.js` directamente; valida sintaxis con Node, no con un bundler.
 - Sirve la app por HTTP: `file://` impide la importación dinámica del cliente remoto.
 - TypeScript en `supabase/functions/` se ejecuta con Deno/Supabase, no con Node.
-- Supabase Auth usa exclusivamente Google OAuth; la autorización de negocio permanece en RLS mediante `calendar_admins`.
+- El cliente accede con la clave familiar de cuatro dígitos y usa el rol anónimo de Supabase para sincronizar el calendario.
 - El esquema inicial está en `schema.sql`; las migraciones son aditivas e idempotentes.
 - No se admiten dependencias locales sin justificar su beneficio frente a una PWA sin build.
 

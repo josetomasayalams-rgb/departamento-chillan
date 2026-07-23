@@ -98,6 +98,24 @@ export function mapPublicReservations(rows: ReservationRow[]): AvailabilityRange
   return mapReservationRows(rows);
 }
 
+function availabilityRangeKey(range: AvailabilityRangeInput): string {
+  return `${range.start_date}|${range.end_date}`;
+}
+
+export function filterExternalMirrors(
+  familyReservations: AvailabilityRangeInput[],
+  externalEvents: AvailabilityRangeInput[],
+): AvailabilityRangeInput[] {
+  const familyRanges = new Set(familyReservations.map(availabilityRangeKey));
+  const seenExternalRanges = new Set<string>();
+  return externalEvents.filter((event) => {
+    const key = availabilityRangeKey(event);
+    if (familyRanges.has(key) || seenExternalRanges.has(key)) return false;
+    seenExternalRanges.add(key);
+    return true;
+  });
+}
+
 async function loadAvailability(
   window: AvailabilityWindow,
   audience: AvailabilityAudience,
@@ -105,18 +123,12 @@ async function loadAvailability(
   const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
-  let reservationsQuery = supabase.from("reservations")
+  const reservationsQuery = supabase.from("reservations")
     .select("id,family_id,start_date,end_date")
     .is("deleted_at", null)
     .lt("start_date", window.to)
     .gt("end_date", window.from)
     .order("start_date");
-  if (audience === "operations") {
-    reservationsQuery = reservationsQuery.eq(
-      "family_id",
-      OPERATIONS_RESERVATION_FAMILY_ID,
-    );
-  }
   const [reservations, externalEvents, syncStatus] = await Promise.all([
     reservationsQuery,
     supabase.from("external_calendar_events")
@@ -131,15 +143,18 @@ async function loadAvailability(
   if (reservations.error || externalEvents.error || syncStatus.error) {
     throw reservations.error || externalEvents.error || syncStatus.error;
   }
+  const reservationRows = (reservations.data || []) as ReservationRow[];
+  const allFamilyReservations = mapPublicReservations(reservationRows);
+  const mappedExternalEvents = (externalEvents.data || []).map((row) => ({
+    identity: `external:${row.source}:${row.external_uid}`,
+    start_date: row.start_date,
+    end_date: row.end_date,
+  })) as AvailabilityRangeInput[];
   return {
     reservations: audience === "public"
-      ? mapPublicReservations(reservations.data || [])
-      : mapParticularReservations(reservations.data || []),
-    externalEvents: (externalEvents.data || []).map((row) => ({
-      identity: `external:${row.source}:${row.external_uid}`,
-      start_date: row.start_date,
-      end_date: row.end_date,
-    })) as AvailabilityRangeInput[],
+      ? allFamilyReservations
+      : mapParticularReservations(reservationRows),
+    externalEvents: filterExternalMirrors(allFamilyReservations, mappedExternalEvents),
     syncStatus: (syncStatus.data || []) as AvailabilitySyncInput[],
   };
 }

@@ -21,7 +21,7 @@ Dominios puros: ical.ts | availability.ts
 | Capa | Puede depender de | No puede depender de |
 | --- | --- | --- |
 | Presentación | Cliente mediante etiquetas HTML | Supabase ni almacenamiento directo |
-| Cliente | APIs web, sesión Google y cliente Supabase remoto | módulos locales nuevos o la Edge Function |
+| Cliente | APIs web, clave familiar local y cliente Supabase remoto | módulos locales nuevos o la Edge Function |
 | Puerto `state.store` | adaptador activo | DOM |
 | Edge HTTP | paquetes Deno, `ical.ts`, `availability.ts`, Supabase | código de la PWA |
 | Dominio iCal | paquetes Deno | HTTP, DOM o Supabase |
@@ -29,9 +29,9 @@ Dominios puros: ical.ts | availability.ts
 
 El test `tests/architecture/boundary.test.mjs` verifica los imports de las capas ejecutables. No hay violaciones base; `known-violations.json` debe permanecer vacío.
 
-La compuerta de identidad pertenece a la composición de `initStore()`: valida la
-sesión antes de construir el adaptador remoto. Las vistas y eventos siguen usando
-solo `state.store`; no consultan Auth ni Supabase directamente.
+La compuerta de acceso pertenece a la presentación y valida la clave familiar
+antes de descubrir la interfaz. Las vistas y eventos siguen usando solo
+`state.store`; no consultan Supabase directamente.
 
 La ventana móvil pertenece a la capa Cliente: deriva 30 fechas desde un inicio,
 las alinea con la semana y vuelve a renderizar cuando cambia el día. No consulta
@@ -50,6 +50,15 @@ directamente.
 `reservedRanges` conserva las fechas originales de cada estadía activa para que
 la identidad operativa no parezca cambiar cuando avanza la ventana diaria;
 `blockedRanges` sí se recorta a la ventana pública.
+El Edge HTTP compara fechas externas contra todas las reservas familiares antes
+de delegar en el dominio de disponibilidad. Los reflejos exactos y duplicados
+entre proveedores se eliminan allí; los cruces parciales permanecen visibles
+como conflictos que requieren decisión humana.
+
+La acción **Sincronizar** entra por `state.store.requestSync()`. El adaptador
+Supabase llama una RPC `security definer` con rate limit que reutiliza el job
+protegido por Vault; Presentación nunca conoce `SYNC_SECRET` ni llama `/sync`
+directamente.
 
 `/public-availability` es la frontera del Linktree. Consulta todas las reservas
 familiares y los bloqueos externos, pero devuelve únicamente `blockedRanges` y

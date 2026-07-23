@@ -6,11 +6,52 @@ import app from "../app.js";
 const {
   CHECKIN_TIME,
   CHECKOUT_TIME,
+  calendarSyncView,
+  crossCalendarConflicts,
+  externalEventsWithoutFamilyMirrors,
   reconcileRollingView,
   reservationTimingForDate,
   reservationVisibleOnDate,
   rollingMonthWindow,
 } = app;
+
+test("oculta bloqueos que vuelven desde Airbnb o Booking cuando ya existe la reserva familiar", () => {
+  const reservations = [
+    { id:"family-a", start_date:"2026-08-01", end_date:"2026-08-03" },
+  ];
+  const externalEvents = [
+    { source:"airbnb", external_uid:"a", start_date:"2026-08-01", end_date:"2026-08-03" },
+    { source:"booking", external_uid:"b", start_date:"2026-08-07", end_date:"2026-08-09" },
+    { source:"airbnb", external_uid:"c", start_date:"2026-08-07", end_date:"2026-08-09" },
+  ];
+  assert.deepEqual(externalEventsWithoutFamilyMirrors(reservations, externalEvents), [
+    { source:"airbnb", external_uid:"c", start_date:"2026-08-07", end_date:"2026-08-09" },
+  ]);
+});
+
+test("señala cruces parciales que no se pueden resolver automáticamente", () => {
+  const reservations = [
+    { id:"family-a", start_date:"2026-08-01", end_date:"2026-08-02" },
+  ];
+  const externalEvents = [
+    { source:"airbnb", start_date:"2026-08-01", end_date:"2026-08-03" },
+    { source:"booking", start_date:"2026-08-07", end_date:"2026-08-09" },
+  ];
+  const conflicts = crossCalendarConflicts(reservations, externalEvents);
+  assert.equal(conflicts.length, 1);
+  assert.equal(conflicts[0].event.source, "airbnb");
+});
+
+test("distingue sincronización en vivo, atrasada e incompleta", () => {
+  const now = Date.parse("2026-07-23T20:45:00.000Z");
+  const current = [
+    { source:"airbnb", status:"ok", last_success_at:"2026-07-23T20:30:00.000Z" },
+    { source:"booking", status:"ok", last_success_at:"2026-07-23T20:31:00.000Z" },
+  ];
+  assert.equal(calendarSyncView(current, now).status, "live");
+  assert.equal(calendarSyncView(current, now + 60 * 60 * 1000).status, "stale");
+  assert.equal(calendarSyncView(current.slice(0, 1), now).status, "unavailable");
+});
 
 test("construye una planificación de 30 días que cruza al mes siguiente", () => {
   const range = rollingMonthWindow("2026-07-18");

@@ -134,7 +134,8 @@ order by source;
 - Un evento externo debe aparecer en la PWA como `Solo lectura` y no aparecer
   dentro del feed familiar.
 - Si el badge inferior indica que una fuente no se actualizo, revisar
-  `calendar_sync_status` y volver a ejecutar `invoke_calendar_ical_sync()`.
+  `calendar_sync_status` y usar **Sincronizar**. La RPC reutiliza
+  `invoke_calendar_ical_sync()` sin exponer el secreto del feed.
 - Para detener importaciones sin perder datos, desactivar el job
   `calendar-ical-sync-15m` desde Supabase Cron. Los ultimos bloqueos permanecen
   visibles hasta la siguiente sincronizacion correcta o su eliminacion manual.
@@ -155,6 +156,11 @@ Airbnb, el estado cambia a **Revision requerida**, nunca a verificado.
 
 En modo local la ficha indica expresamente que los datos permanecen solo en el
 dispositivo y no se publican en los canales.
+
+El cliente y la Edge Function descartan reflejos exactos del feed familiar y
+duplicados del mismo rango entre proveedores. Si las fechas se cruzan pero no
+son iguales, la plataforma no adivina cuál borrar: muestra una advertencia para
+corregir la reserva equivocada en Calendario familiar, Airbnb o Booking.
 
 ## Archivos principales
 

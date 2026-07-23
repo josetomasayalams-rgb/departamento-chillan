@@ -4,6 +4,7 @@ import {
   assertStringIncludes,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
+  filterExternalMirrors,
   handleRequest,
   mapParticularReservations,
   mapPublicReservations,
@@ -35,6 +36,20 @@ Deno.test("public feed includes every family reservation without family metadata
     { identity: "family:particular-a", start_date: "2026-07-20", end_date: "2026-07-22" },
     { identity: "family:family-a", start_date: "2026-07-23", end_date: "2026-07-25" },
     { identity: "family:family-b", start_date: "2026-07-26", end_date: "2026-07-28" },
+  ]);
+});
+
+Deno.test("external mirrors and provider duplicates do not create a second reservation", () => {
+  const family = [
+    { identity:"family:a", start_date:"2026-08-01", end_date:"2026-08-03" },
+  ];
+  const external = [
+    { identity:"external:airbnb:a", start_date:"2026-08-01", end_date:"2026-08-03" },
+    { identity:"external:airbnb:b", start_date:"2026-08-07", end_date:"2026-08-09" },
+    { identity:"external:booking:c", start_date:"2026-08-07", end_date:"2026-08-09" },
+  ];
+  assertEquals(filterExternalMirrors(family, external), [
+    { identity:"external:airbnb:b", start_date:"2026-08-07", end_date:"2026-08-09" },
   ]);
 });
 
