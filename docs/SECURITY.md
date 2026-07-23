@@ -4,7 +4,11 @@
 
 La PWA usa una pantalla de acceso obligatoria con la clave familiar `9014`. No solicita correo ni inicio de sesión con Google. El cliente nunca convierte un fallo de conexión a Supabase en escritura local silenciosa.
 
-La clave se valida en el cliente estático: evita el acceso casual a la interfaz, pero no es un secreto validado por el servidor. El rol `anon` de Supabase puede leer y modificar reservas mediante la API pública del proyecto.
+La clave se valida en el cliente estático: evita el acceso casual a la interfaz,
+pero no es un secreto validado por el servidor. Los roles `anon` y
+`authenticated` de Supabase pueden leer y modificar reservas mediante la API
+pública del proyecto; `authenticated` se conserva sólo para dispositivos con
+una sesión persistida del flujo OAuth retirado.
 
 ## Secretos
 
@@ -18,7 +22,7 @@ La clave se valida en el cliente estático: evita el acceso casual a la interfaz
 | --- | --- |
 | Fuga de detalles familiares por iCal | El feed publica solo “No disponible” |
 | Acceso casual a la interfaz | La pantalla de clave `9014` es obligatoria en cada carga y no puede desactivarse desde la aplicación |
-| Acceso directo a la API pública | Riesgo aceptado por el modelo de clave local; Supabase permite al rol `anon` leer, insertar y actualizar reservas |
+| Acceso directo a la API pública | Riesgo aceptado por el modelo de clave local; Supabase permite a `anon` y a sesiones antiguas `authenticated` leer, insertar y actualizar reservas |
 | Pérdida por borrado | `deleted_at` oculta la fila y el trigger append-only conserva actor y versiones |
 | Fuga de proveedor o huésped hacia Operaciones | `/availability` publica sólo reservas particulares y fechas externas con un identificador HMAC opaco; nunca fuente, UID, familia, huésped, notas ni URL |
 | Fuga de identidad hacia el Linktree | `/public-availability` incluye todas las ocupaciones, pero solo publica rangos consolidados sin identificadores ni fuente |

@@ -35,6 +35,9 @@ Cuando Supabase está configurado, la composición usa la clave familiar como
 compuerta de interacción y el rol anónimo del cliente para el calendario
 compartido. Un fallo de conexión no cambia al adaptador local: la escritura
 queda cerrada para evitar dos calendarios divergentes.
+Las sesiones `authenticated` persistidas por la versión OAuth anterior reciben
+el mismo contrato temporal que `anon`, de modo que no oculten reservas en
+dispositivos antiguos.
 El modo `localStorage` existe únicamente para una instalación deliberadamente
 no conectada y avisa que no publica en Airbnb ni Booking.
 

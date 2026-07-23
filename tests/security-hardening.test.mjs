@@ -20,6 +20,10 @@ const suppressionMigration = readFileSync(
   "supabase/migrations/20260723213000_suppress_airbnb_duplicate_august.sql",
   "utf8",
 );
+const authenticatedCompatMigration = readFileSync(
+  "supabase/migrations/20260723214000_family_pin_authenticated_compat.sql",
+  "utf8",
+);
 
 test("the family PIN is the only interactive access gate", () => {
   assert.match(app, /const FAMILY_KEY = "9014"/);
@@ -56,4 +60,12 @@ test("confirmed provider mirrors stay suppressed across future syncs", () => {
   );
   assert.match(suppressionMigration, /2026-08-01 a 2026-08-02/);
   assert.match(suppressionMigration, /delete from public\.external_calendar_events/);
+});
+
+test("persisted OAuth sessions remain compatible with the PIN-only calendar", () => {
+  assert.match(authenticatedCompatMigration, /to anon, authenticated/);
+  assert.match(
+    authenticatedCompatMigration,
+    /grant select, insert, update on public\.reservations to anon, authenticated/,
+  );
 });

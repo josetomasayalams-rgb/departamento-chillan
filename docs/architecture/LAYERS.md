@@ -32,6 +32,9 @@ El test `tests/architecture/boundary.test.mjs` verifica los imports de las capas
 La compuerta de acceso pertenece a la presentación y valida la clave familiar
 antes de descubrir la interfaz. Las vistas y eventos siguen usando solo
 `state.store`; no consultan Supabase directamente.
+El adaptador remoto acepta tanto `anon` como una sesión `authenticated`
+persistida del flujo OAuth retirado; ambos recorren la misma interfaz
+`state.store`.
 
 La ventana móvil pertenece a la capa Cliente: deriva 30 fechas desde un inicio,
 las alinea con la semana y vuelve a renderizar cuando cambia el día. No consulta

@@ -214,13 +214,13 @@ drop policy if exists "calendar admins update reservations" on public.reservatio
 drop policy if exists "calendar admins delete reservations" on public.reservations;
 
 create policy "family app reads reservations"
-  on public.reservations for select to anon using (true);
+  on public.reservations for select to anon, authenticated using (true);
 create policy "family app inserts reservations"
-  on public.reservations for insert to anon with check (true);
+  on public.reservations for insert to anon, authenticated with check (true);
 create policy "family app updates reservations"
-  on public.reservations for update to anon using (true) with check (true);
+  on public.reservations for update to anon, authenticated using (true) with check (true);
 
-grant select, insert, update on public.reservations to anon;
+grant select, insert, update on public.reservations to anon, authenticated;
 
 -- Excepciones de importación: UID concretos confirmados como espejos obsoletos.
 -- replace_external_calendar_events debe excluir estas filas al reemplazar cada feed.

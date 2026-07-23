@@ -3,7 +3,9 @@
 - El navegador carga `app.js` directamente; valida sintaxis con Node, no con un bundler.
 - Sirve la app por HTTP: `file://` impide la importación dinámica del cliente remoto.
 - TypeScript en `supabase/functions/` se ejecuta con Deno/Supabase, no con Node.
-- El cliente accede con la clave familiar de cuatro dígitos y usa el rol anónimo de Supabase para sincronizar el calendario.
+- El cliente accede con la clave familiar de cuatro dígitos y usa Supabase para
+  sincronizar el calendario. Se admiten `anon` y sesiones `authenticated`
+  persistidas por compatibilidad con el OAuth retirado.
 - El esquema inicial está en `schema.sql`; las migraciones son aditivas e idempotentes.
 - Las excepciones de importación viven en
   `external_calendar_event_suppressions`; el reemplazo SQL las aplica por UID
