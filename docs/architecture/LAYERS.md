@@ -54,6 +54,9 @@ El Edge HTTP compara fechas externas contra todas las reservas familiares antes
 de delegar en el dominio de disponibilidad. Los reflejos exactos y duplicados
 entre proveedores se eliminan allí; los cruces parciales permanecen visibles
 como conflictos que requieren decisión humana.
+El puerto SQL de reemplazo consulta
+`external_calendar_event_suppressions` y descarta sólo los UID confirmados como
+ecos obsoletos antes de persistir el nuevo conjunto atómico.
 
 La acción **Sincronizar** entra por `state.store.requestSync()`. El adaptador
 Supabase llama una RPC `security definer` con rate limit que reutiliza el job

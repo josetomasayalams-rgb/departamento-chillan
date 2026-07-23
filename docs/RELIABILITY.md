@@ -23,6 +23,9 @@ La PWA estática debe seguir disponible aunque Supabase o un proveedor iCal fall
   a un pedido cada 45 segundos. El secreto permanece en Vault.
 - Los UID del propio feed familiar y los rangos externos idénticos a una reserva
   familiar no se reimportan como una segunda reserva.
+- Los ecos confirmados que un proveedor devuelve con fechas desplazadas se
+  suprimen por `source + external_uid`; no reaparecen en ejecuciones futuras
+  del cron ni afectan otras reservas del proveedor.
 - Los borrados de reservas son lógicos y el historial append-only conserva versión previa/nueva y actor.
 - La clave familiar protege la interfaz; el cliente usa el rol anónimo de Supabase para sincronizar reservas. iCal y disponibilidad usan service role y devuelven contratos sanitizados.
 

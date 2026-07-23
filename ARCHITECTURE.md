@@ -10,6 +10,8 @@ La plataforma combina una PWA estática y una Edge Function de sincronización; 
   sin nombres ni notas privadas.
 - **Sincronización:** actualiza fuentes externas de forma atómica, permite
   solicitar un ciclo manual y mantiene el último estado válido ante errores.
+- **Supresiones externas:** excluye por `source + external_uid` ecos concretos
+  que una persona confirmó como duplicados, sin afectar otros eventos.
 
 ## Flujo principal
 
@@ -55,6 +57,9 @@ Antes de construir ambos contratos, la Edge Function retira eventos externos
 que coinciden con una reserva familiar y colapsa duplicados de proveedor. El
 cliente aplica la misma defensa al renderizar. Los cruces parciales no se borran
 automáticamente: se señalan para que una persona corrija la reserva equivocada.
+Cuando un proveedor desplaza las fechas de un eco confirmado, la tabla
+`external_calendar_event_suppressions` evita que ese UID vuelva a insertarse en
+reemplazos futuros del feed.
 
 El botón **Sincronizar** invoca una RPC limitada que reutiliza
 `invoke_calendar_ical_sync()` y su secreto guardado en Vault; el navegador nunca

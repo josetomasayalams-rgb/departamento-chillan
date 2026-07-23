@@ -23,6 +23,7 @@ La clave se valida en el cliente estático: evita el acceso casual a la interfaz
 | Fuga de proveedor o huésped hacia Operaciones | `/availability` publica sólo reservas particulares y fechas externas con un identificador HMAC opaco; nunca fuente, UID, familia, huésped, notas ni URL |
 | Fuga de identidad hacia el Linktree | `/public-availability` incluye todas las ocupaciones, pero solo publica rangos consolidados sin identificadores ni fuente |
 | Fallo de un proveedor externo | La sincronización conserva el último conjunto válido |
+| Supresión accidental de una reserva real | Las excepciones se limitan a la clave compuesta `source + external_uid`, están cerradas a `anon` y se administran sólo con `service_role` |
 | HTML inyectado desde notas | La interfaz escapa texto antes de insertarlo |
 | Respuestas externas grandes | La función limita el tamaño del calendario |
 

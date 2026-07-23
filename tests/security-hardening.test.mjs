@@ -16,6 +16,10 @@ const manualSyncMigration = readFileSync(
   "supabase/migrations/20260723210000_calendar_manual_sync_request.sql",
   "utf8",
 );
+const suppressionMigration = readFileSync(
+  "supabase/migrations/20260723213000_suppress_airbnb_duplicate_august.sql",
+  "utf8",
+);
 
 test("the family PIN is the only interactive access gate", () => {
   assert.match(app, /const FAMILY_KEY = "9014"/);
@@ -41,4 +45,15 @@ test("manual sync reuses the protected cron function without exposing its secret
   assert.match(manualSyncMigration, /public\.invoke_calendar_ical_sync\(\)/);
   assert.match(manualSyncMigration, /grant execute .* to anon, authenticated/i);
   assert.doesNotMatch(app, /SYNC_SECRET|x-sync-secret/);
+});
+
+test("confirmed provider mirrors stay suppressed across future syncs", () => {
+  assert.match(suppressionMigration, /create table if not exists public\.external_calendar_event_suppressions/);
+  assert.match(suppressionMigration, /primary key \(source, external_uid\)/);
+  assert.match(
+    suppressionMigration,
+    /where not exists \(\s*select 1\s*from public\.external_calendar_event_suppressions/s,
+  );
+  assert.match(suppressionMigration, /2026-08-01 a 2026-08-02/);
+  assert.match(suppressionMigration, /delete from public\.external_calendar_events/);
 });

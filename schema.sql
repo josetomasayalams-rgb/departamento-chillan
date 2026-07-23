@@ -222,6 +222,20 @@ create policy "family app updates reservations"
 
 grant select, insert, update on public.reservations to anon;
 
+-- Excepciones de importación: UID concretos confirmados como espejos obsoletos.
+-- replace_external_calendar_events debe excluir estas filas al reemplazar cada feed.
+create table if not exists public.external_calendar_event_suppressions (
+  source text not null check (source in ('airbnb', 'booking')),
+  external_uid text not null,
+  reason text not null,
+  created_at timestamptz not null default now(),
+  primary key (source, external_uid)
+);
+
+alter table public.external_calendar_event_suppressions enable row level security;
+revoke all on public.external_calendar_event_suppressions from public, anon, authenticated;
+grant select, insert, update, delete on public.external_calendar_event_suppressions to service_role;
+
 grant all on reservations to service_role;
 
 -- Tiempo real: que los cambios se reflejen en todos los dispositivos
